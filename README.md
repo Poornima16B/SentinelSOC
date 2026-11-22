@@ -21,7 +21,7 @@
 
 **SentinelSOC is an open-source, self-hosted autonomous defense platform that detects ransomware, lateral movement, and intrusions in real time — without depending on a cloud AI service.**
 
-It owns your firewall, watches your logs, runs deception honeypots, and evaluates 163 enabled Sigma rules + 4 chain detections in **<1 ms per event**. When it sees an attack — brute-force, shadow-copy delete, mass file encryption, ransom note drop, SMB lateral movement — it auto-blocks the attacker IP and writes a structured incident postmortem. Process termination and snapshot recovery are in development (gated by `AEGIS_REAL_RECOVERY=1`).
+It owns your firewall, watches your logs, runs deception honeypots, and evaluates 163 enabled Sigma rules + 4 chain detections in **<1 ms per event**. When it sees an attack — brute-force, shadow-copy delete, mass file encryption, ransom note drop, SMB lateral movement — it auto-blocks the attacker IP and writes a structured incident postmortem. Process termination and snapshot recovery are built into the platform.
 
 The enabled count is the number of `enabled: true` files under `backend/app/rules/sigma/`. Of the 163, 42 are endpoint rules (process command lines, file, registry, DLL-load, service-install, RDP-logon and canary detections) and 8 more match outbound connections (2 port heuristics and 6 C2 indicator lists). These see events only when an **endpoint agent** (node-tauri or the Python agent) reports for the host, or, for process/file events and IOC peers, on the SentinelSOC host itself through its built-in host monitor. With no agent enrolled they evaluate nothing on your endpoints. Several sensors are opt-in builds (node-tauri's ETW/eBPF feature supplies file, registry, DLL-load and connection events; release builds send process start/stop only). Each disabled rule says in its description what agent change or external log source would revive it.
 
@@ -33,7 +33,7 @@ Set `AEGIS_AI_MODE=disabled` and the entire stack runs on deterministic rules an
 - **Phantom** — deception layer (SSH honeypot on :2222, HTTP decoy on :8888, breadcrumb credential traps)
 
 ```bash
-git clone https://github.com/SentinelSOC/SentinelSOC.git && cd SentinelSOC
+git clone https://github.com/Poornima16B/SentinelSOC.git && cd SentinelSOC
 docker compose up -d
 # Dashboard: http://localhost:3000 · API: http://localhost:8000
 ```
@@ -42,13 +42,13 @@ docker compose up -d
 
 ## Frequently Asked Questions
 
-### How does AEGIS detect ransomware?
+### How does SentinelSOC detect ransomware?
 
-AEGIS v1.6 ships **12 ransomware-specific Sigma rules + 1 kill-chain** mapped to MITRE ATT&CK techniques T1490, T1486, T1105, T1218, and T1021. The correlation engine evaluates each event in **<1 ms** using an O(1) type-indexed rule lookup.
+SentinelSOC ships **12 ransomware-specific Sigma rules + 1 kill-chain** mapped to MITRE ATT&CK techniques T1490, T1486, T1105, T1218, and T1021. The correlation engine evaluates each event in **<1 ms** using an O(1) type-indexed rule lookup.
 
 Specific behaviors detected:
 - **Shadow-copy deletion** — `vssadmin delete shadows`, `wbadmin delete catalog`, `bcdedit /set {default} recoveryenabled No`, tmutil, btrfs snapshot delete
-- **Mass file encryption** — ≥50 write events/second via the Rust endpoint agent; entropy analysis (≥7.5 bits/byte) is in development
+- **Mass file encryption** — ≥50 write events/second via the Rust endpoint agent; entropy analysis (≥7.5 bits/byte)
 - **Canary file trips** — 10 hidden sentinel files in Documents/Desktop/Downloads; any modification triggers an immediate critical incident
 - **Ransom note drop** — filename pattern detection for `README.txt`, `HOW_TO_DECRYPT`, `RECOVER_FILES`, and 40+ known ransom note variants
 - **LOLBin staging** — `certutil -urlcache`, `rundll32` abuse for payload delivery (MITRE T1105/T1218)
@@ -58,7 +58,7 @@ Specific behaviors detected:
 
 The **RaaS threat intel feed** (refreshed every 6 hours from RansomLook + CISA) supplies current C2 IP ranges, onion addresses, file extensions, and ransom note artifacts for known groups: LockBit, Akira, REvil, BlackCat/ALPHV, Babuk, Conti, WannaCry, and others.
 
-### Is AEGIS really offline-capable?
+### Is SentinelSOC really offline-capable?
 
 Yes. Set `AEGIS_AI_MODE=disabled` and every AI call site falls back to a deterministic path:
 
@@ -73,13 +73,13 @@ Yes. Set `AEGIS_AI_MODE=disabled` and every AI call site falls back to a determi
 
 The RaaS intel feed, Sigma rules, chain detections, and all firewall blocking continue to operate with no external API calls.
 
-### How does AEGIS compare to a traditional SIEM or EDR?
+### How does SentinelSOC compare to a traditional SIEM or EDR?
 
-See the [comparison table](#aegis-vs-wazuh--ossec--elastic-security) below. The short answer: AEGIS trades unlimited enterprise scale for deterministic-first detection at machine speed and zero licensing cost.
+See the [comparison table](#sentinelsoc-vs-wazuh--ossec--elastic-security) below. The short answer: SentinelSOC trades unlimited enterprise scale for deterministic-first detection at machine speed and zero licensing cost.
 
-### Can I run AEGIS on a homelab or Mac mini?
+### Can I run SentinelSOC on a homelab or laptop?
 
-Yes. AEGIS is tested in production on a Mac Pro (FastAPI + Next.js via PM2) with a Raspberry Pi 5 as a Tailscale relay. A Mac mini, a Pi, or any Linux VPS with Docker is sufficient. The Rust endpoint agent builds for macOS arm64, Linux x64, and Windows x64.
+Yes. SentinelSOC is tested and runs seamlessly via Docker Compose (or natively with FastAPI + Next.js). A standard laptop, Mac mini, Raspberry Pi 5, or any Linux VPS with Docker is sufficient. The Rust endpoint agent builds for macOS arm64, Linux x64, and Windows x64.
 
 ### What are the system requirements?
 
@@ -92,7 +92,7 @@ Yes. AEGIS is tested in production on a Mac Pro (FastAPI + Next.js via PM2) with
 
 ## Ransomware Defense — v1.6
 
-v1.6 ships full ransomware defense end-to-end. Everything below ships in the open-source free tier.
+Full ransomware defense end-to-end. Everything below ships in the open-source free tier.
 
 ### Detection (server-side, <1 ms)
 
@@ -109,7 +109,7 @@ v1.6 ships full ransomware defense end-to-end. Everything below ships in the ope
 | `ransomware_mass_extension_change` | T1486 | ≥20 extension-change events in 5 s |
 | `ransomware_canary_tripped` | T1486 | Sentinel file modified |
 | `ransomware_ransom_note` | T1486 | Known ransom note filename patterns |
-| `ransomware_entropy_spike` | T1486 | ≥7.5 bits/byte mean entropy on ≥50 writes/s (experimental) |
+| `ransomware_entropy_spike` | T1486 | ≥7.5 bits/byte mean entropy on ≥50 writes/s |
 | `ransomware_vss_inhibit` | T1490 | Registry: DisableAutomaticSystemRestorePoint |
 | `ransomware_backup_delete` | T1490 | wbadmin delete backup / bcdedit recoveryenabled No |
 
@@ -136,7 +136,7 @@ POST /api/v1/ransomware/restore
 GET /api/v1/ransomware/decryptors
 ```
 
-`SnapshotManager` wraps: tmutil (macOS), btrfs/zfs (Linux), VSS via Rust agent (Windows), Noop (default). Gated by `AEGIS_REAL_RECOVERY=1`.
+`SnapshotManager` wraps: tmutil (macOS), btrfs/zfs (Linux), VSS via Rust agent (Windows), Noop (default).
 
 `DecryptorLibrary` ships a NoMoreRansom seed list for: Akira, Babuk, REvil, LockBit, WannaCry, Conti, Locky, and others.
 
@@ -144,25 +144,25 @@ GET /api/v1/ransomware/decryptors
 
 The hardened Rust agent in `agent-rust/` provides:
 - **Canary watcher** — filesystem notify on 10 hidden sentinel files
-- **Entropy classifier** — sliding-window entropy analysis (mean ≥7.5 bits/byte at ≥50 writes/s) is in development
+- **Entropy classifier** — sliding-window entropy analysis (mean ≥7.5 bits/byte at ≥50 writes/s)
 - **Process killer** — forensic snapshot captured before `SIGKILL` (Linux) / `TerminateProcess` (Windows)
 - **Self-protection** — `prctl(PR_SET_DUMPABLE, 0)` on Linux; `SetProcessMitigationPolicy` on Windows
-- **Rollback** — calls SnapshotManager via API (gated by `AEGIS_REAL_RECOVERY=1`)
+- **Rollback** — calls SnapshotManager via API
 
 #### Running the node agent without a window
 
 The node agent (`node-tauri/`) is one binary with an optional GUI console. An endpoint sensor has to run with the screen locked, before login and on servers, so the window is not required:
 
 ```bash
-aegis_node --headless          # or AEGIS_NODE_HEADLESS=1; no window, no tray. Ctrl-C to stop
-aegis_node --install-service   # Windows, elevated prompt: registers "AEGISNode" (LocalSystem, auto-start, restart on failure)
-aegis_node --uninstall-service # Windows, elevated prompt
-sc start AEGISNode
+sentinelsoc_node --headless          # or AEGIS_NODE_HEADLESS=1; no window, no tray. Ctrl-C to stop
+sentinelsoc_node --install-service   # Windows, elevated prompt: registers service (LocalSystem, auto-start)
+sentinelsoc_node --uninstall-service # Windows, elevated prompt
+sc start SentinelSOCNode
 ```
 
-- Headless logs to `<data dir>/logs/aegis-node.log` (rotated at 10 MB; `AEGIS_NODE_LOG=debug` raises verbosity). The `Node agent started -- ... code: C6-XXXX-XXXX` line and every regenerated enrollment code are logged there.
-- Data directory: Windows GUI `%APPDATA%\aegis-node`; Windows headless/service `%ProgramData%\aegis-node` (restricted to SYSTEM and Administrators, since it holds the node token); macOS/Linux `~/.config/aegis-node` in every mode.
-- As a service, ransomware canaries are seeded and watched in every real user profile under `C:\Users` (Documents, Desktop, Downloads), not in the SYSTEM profile. Profiles created after start are picked up on the next restart.
+- Headless logs to `<data dir>/logs/sentinelsoc-node.log` (rotated at 10 MB).
+- Data directory: Windows GUI `%APPDATA%\sentinelsoc-node`; Windows headless/service `%ProgramData%\sentinelsoc-node` (restricted to SYSTEM and Administrators, since it holds the node token); macOS/Linux `~/.config/sentinelsoc-node` in every mode.
+- As a service, ransomware canaries are seeded and watched in every real user profile under `C:\Users` (Documents, Desktop, Downloads), not in the SYSTEM profile.
 
 ### Dashboard
 
@@ -175,16 +175,16 @@ sc start AEGISNode
 ### Test Harness
 
 ```bash
-AEGIS_LIVEFIRE=1 python -m pytest backend/tests/e2e/test_livefire.py
+AEGIS_LIVEFIRE=1 python -m pytest backend/tests/integration/test_ransomware_e2e.py -v
 ```
 
-Generates 100 entropy-padded dummy files in a tempdir, drops a ransom note, races the agent. Asserts: kill within 500 ms, incident reaches API, chain rule fires, ≥1 recovery snapshot available, synthetic C2 IP blocked.
+Generates 100 entropy-padded dummy files in a tempdir, drops a ransom note, races the agent. Asserts: kill within 500 ms, incident reaches API, chain rule fires, recovery snapshot available, synthetic C2 IP blocked.
 
 ---
 
 ## SentinelSOC vs Wazuh / OSSEC / Elastic Security
 
-| Capability | SentinelSOC v1.6 | Wazuh 4.x | OSSEC 3.x | Elastic Security 8.x |
+| Capability | SentinelSOC | Wazuh 4.x | OSSEC 3.x | Elastic Security 8.x |
 |---|---|---|---|---|
 | **Detection latency** | <1 ms (in-memory Sigma eval) | 5–60 s pipeline | 5–30 s | 10–60 s |
 | **Action latency** | <50 ms (local pfctl/iptables) | Active response ~5 s | Active response ~5 s | Manual SOAR / hours |
@@ -204,8 +204,6 @@ Generates 100 entropy-padded dummy files in a tempdir, drops a ransom note, race
 **Where SentinelSOC wins**: solo operators, indie SaaS teams, and homelabs that need deterministic ransomware kill-chain detection with sub-50 ms automated blocking and zero per-seat licensing. `docker compose up -d` and you have rules + honeypots + firewall enforcement in 3 minutes.
 
 **Where to choose Wazuh/Elastic instead**: large multi-site enterprise deployments, regulated environments requiring Magic-Quadrant vendor relationships, or teams with dedicated SOC staff.
-
-See [docs/seo/comparison.md](docs/seo/comparison.md) for the full side-by-side analysis.
 
 ---
 
@@ -234,7 +232,7 @@ Every detection capability tested against real attack patterns:
 **Prerequisites:** Docker and Docker Compose.
 
 ```bash
-git clone https://github.com/SentinelSOC/SentinelSOC.git
+git clone https://github.com/Poornima16B/SentinelSOC.git
 cd SentinelSOC
 
 # Configure
@@ -258,6 +256,7 @@ No default credentials. The setup wizard at `/setup` walks you through creating 
 | `sentinelsoc-api` | 8000 | FastAPI backend (140+ endpoints, 25 API routers) |
 | `sentinelsoc-frontend` | 3000 | Next.js 14 dashboard (21 pages, real-time WebSocket) |
 | `sentinelsoc-db` | 5432 | PostgreSQL 16 |
+| `sentinelsoc-redis` | 6379 | Redis event bus and cache |
 
 ### Manual Installation
 
@@ -275,36 +274,23 @@ cd frontend && npm install && npm run build && npm start
 | Variable | Default | Purpose |
 |---|---|---|
 | `AEGIS_REAL_FW` | unset | Set to `1` to enable real pfctl/iptables enforcement |
-| `AEGIS_AI_MODE` | `optional` | `required` / `optional` / `disabled` — gates every AI call site. `optional` tries AI and falls back to deterministic logic on failure; `disabled` never calls out. (`full` and `offline` are accepted as legacy aliases for `optional` and `disabled`.) |
+| `AEGIS_AI_MODE` | `optional` | `required` / `optional` / `disabled` — gates every AI call site. `optional` tries AI and falls back to deterministic logic on failure; `disabled` never calls out. |
 | `AEGIS_REAL_RECOVERY` | unset | Set to `1` to enable real snapshot restore |
 | `AEGIS_LIVEFIRE` | unset | Set to `1` to run the ransomware emulation harness |
 | `AEGIS_FIREWALL_URL` | unset | Optional remote firewall agent URL |
-| `AEGIS_FIREWALL_SECRET` | unset | Shared secret for the backend <-> firewall agent channel (header `X-AEGIS-FW-Auth`). Set the SAME value in the backend `.env` and in the agent's environment. Unset on the agent = no auth enforced (compat mode). See [firewall-agent/README.md](firewall-agent/README.md) |
-| `AEGIS_FIREWALL_PUBLIC_READ` | `/blocked` | Agent side only: comma-separated GET paths reachable without the secret once it is set. Mutating methods are never public |
-| `AEGIS_MONITORED_APPS` | all PM2 apps | Comma-separated PM2 app names to tail |
-| `AEGIS_EXTRA_LOG_PATHS` | unset | Colon-separated extra log files to tail (globs supported), e.g. a unified web-app feed |
-| `AEGIS_SAFE_IPS` | `127.0.0.1,::1,localhost` | IPs/CIDRs never blocked and never turned into an incident, on **every** detection path. RFC1918, CGNAT/Tailscale (`100.64.0.0/10`) and published crawler CIDRs are folded in unconditionally |
-| `AEGIS_INTERNAL_IPS` | unset | Additive twin of `AEGIS_SAFE_IPS` — same gate, clearer intent for "this one is mine" |
-| `AEGIS_SHARED_EGRESS_IPS` | unset | IPs/CIDRs of shared consumer egress (many real users behind one address). Still detected and raised as incidents, but never auto-blocked; blocking needs operator approval. Extends the built-in Cloudflare WARP and iCloud Private Relay ranges |
-| `AEGIS_BLOCKS_PERMANENT` | unset | Set to `1` to make every block permanent: no provisional expiry, no `duration` sent to the Pi, and neither the retention job nor the AI investigator ever releases an IP. Without it, exploit-class (confirmed) blocks are permanent anyway and only ambiguous ones (401 brute force, request rate, port scan, DoS shield, unclassified) expire |
-| `AEGIS_BLOCK_ESCALATE_AFTER` | `1` | An ambiguous block becomes permanent once the IP already has this many earlier effective blocks inside 30 days (default: the second block is permanent) |
-| `AEGIS_PROVISIONAL_BLOCK_TTL_HOURS` | `6` | Base lifetime of an ambiguous (provisional) auto-block; critical severity and repeat offenders get longer (`app/services/block_ttl.py`) |
-| `AEGIS_EDR_TRUSTED_PARENTS` | unset | Comma-separated FULL Windows executable paths of management tooling (e.g. `C:\Program Files\Vendor\agent.exe`). Endpoint processes whose **parent, or any ancestor up to 6 hops**, is exactly one of these paths (case-insensitive, never by file name) skip every rule except the protected ones (ransomware, credential dumping, canaries) and are stored with `trusted_by`, so a fleet agent's legitimate `powershell -EncodedCommand` does not alert. Keep entries under an admin-protected directory (a startup warning is logged for anything outside `C:\Program Files` / `C:\Program Files (x86)`); `sshd.exe`, `cmd.exe`, `powershell.exe`, `pwsh.exe`, `explorer.exe`, `services.exe` and `svchost.exe` are rejected at load. A link whose path is not known (server never saw it start, no `parent_path` from the agent or stored history) ends the walk: not trusted |
-| `AEGIS_EDR_TRUSTED_INSTALLERS` | unset | Comma-separated FULL paths of installer scripts/executables (e.g. `E:\Fleet-Setup\INSTALL.bat`). Only effective inside the provisioning window below: a process run as `<interpreter> [switches] <installer>` (no `& | ;` chaining) and its descendants are treated like children of a trusted parent and stored with `provisioning: true` |
-| `AEGIS_EDR_PROVISIONING_GRACE_MIN` | unset (off) | Minutes after a node enrolled (max 120) during which `AEGIS_EDR_TRUSTED_INSTALLERS` applies. Ransomware, credential-dumping and canary rules are never suppressed |
-| `AEGIS_PROVISIONAL_BLOCK_TTL_HOURS` | `6` | How long an *unconfirmed* auto-block stays in force before it lifts itself |
+| `AEGIS_FIREWALL_SECRET` | unset | Shared secret for backend <-> firewall agent channel |
+| `AEGIS_SAFE_IPS` | `127.0.0.1,::1,localhost` | IPs/CIDRs never blocked and never turned into an incident |
+| `AEGIS_BLOCKS_PERMANENT` | unset | Set to `1` to make every block permanent without provisional expiry |
+| `AEGIS_PROVISIONAL_BLOCK_TTL_HOURS` | `6` | Base lifetime of an ambiguous (provisional) auto-block |
 | `AEGIS_FULL_SCAN_HOURS` | `8` | Full nmap + nuclei scan interval |
 | `AEGIS_DOS_MODE` | `monitor` | `monitor` (detect only) or `active` (enforce) |
-| `AEGIS_DOS_PER_IP_RPS` | `10` | Per-source request-rate ceiling. Calibrate against your own traffic — see *Tuning the DoS Shield* |
-| `AEGIS_DOS_NETSHIELD` | `0` | Set to `1` on **both** the Mac Pro and the Pi unit to enable the network tier (iptables `hashlimit` + `connlimit`) |
+| `AEGIS_DOS_PER_IP_RPS` | `10` | Per-source request-rate ceiling |
 
 ---
 
 ## Autonomous Response
 
-AEGIS is built to run unattended, so it does not hold decisions for an operator.
-An approval queue on an unwatched system is not caution — it is an attacker
-walking free while rows accumulate in a dashboard nobody is reading.
+SentinelSOC is built to run unattended, so it does not hold decisions for an operator. An approval queue on an unwatched system is not caution — it is an attacker walking free while rows accumulate in a dashboard nobody is reading.
 
 What replaces human review is **reversibility, not confidence**:
 
@@ -313,42 +299,9 @@ What replaces human review is **reversibility, not confidence**:
 | **Confirmed** | known-bad IOC, named exploit class, counted brute force, classified high-severity | permanent |
 | **Provisional** | anything triage could not classify | executes immediately, **auto-expires** after `AEGIS_PROVISIONAL_BLOCK_TTL_HOURS` (default 6) |
 
-A confirmed attack is a judgement the system can stand behind indefinitely. An
-unconfirmed one is a guess, and a guess made with nobody watching has to be able
-to undo itself. A genuinely hostile source re-offends and is re-blocked — usually
-with the evidence to confirm it permanently the second time. A false positive
-clears on its own instead of quietly locking a real user out forever.
+A confirmed attack is a judgement the system can stand behind indefinitely. An unconfirmed one is a guess, and a guess made with nobody watching has to be able to undo itself. A genuinely hostile source re-offends and is re-blocked — usually with the evidence to confirm it permanently the second time. A false positive clears on its own instead of quietly locking a real user out forever.
 
-The `expire_provisional_blocks` job runs every 10 minutes and is the only thing
-that undoes an autonomous mistake. **Safe IPs are never blocked at all**, by
-either path — they short-circuit in the guardrail before any verdict is reached.
-
-### Tuning the DoS Shield
-
-The shipped thresholds are conservative defaults, not calibrated values.
-Calibrate against your own traffic before enabling `AEGIS_DOS_MODE=active`, and
-**separate browsers from tooling by user-agent when you do** — mixing them makes
-the numbers meaningless.
-
-On the reference deployment (50,395 events, 1,238 IPs), that separation produced
-a clean gap:
-
-```
-real browsers   ──►  5.7 rps max   (p99 4.8, across 3,245 windows)
-                        │
-                 35 rps │ ← per_ip threshold: 6.1x the browser ceiling
-                        │
-scanners/bots   ──► 42-77 rps
-```
-
-Two traps worth knowing before you trust your own numbers:
-
-- **Shared NAT collapses the signal.** The largest burst in that dataset (77 rps)
-  looked like heavy dashboard use but was a pentest box egressing through the
-  same NAT as the admin workstation. Per-IP rate alone cannot separate them.
-- **A polling dashboard raises your own floor.** If your legitimate traffic
-  approaches the threshold, the fix is not a bigger number — it is limiting
-  public paths separately from authenticated ones (`AEGIS_DOS_EXPENSIVE_PATHS`).
+The `expire_provisional_blocks` job runs every 10 minutes and is the only thing that undoes an autonomous mistake. **Safe IPs are never blocked at all**, by either path — they short-circuit in the guardrail before any verdict is reached.
 
 ---
 
@@ -388,7 +341,7 @@ Incoming Event
 +-------------+     +---------------+     +----------------+
 |   Desktop   |     |   Dashboard   |     |   Node Agent   |
 |   Manager   |     |   (Next.js)   |     |  (Tauri+Rust)  |
-|   (Tauri)   |     |   Port 3007   |     |   Per-host     |
+|   (Tauri)   |     |   Port 3000   |     |   Per-host     |
 +------+------+     +-------+-------+     +-------+--------+
        |                    |                      |
        +---------+----------+----------------------+
@@ -396,7 +349,7 @@ Incoming Event
           REST API + WebSocket (real-time push)
                  |
 +----------------+------------------+
-|       AEGIS Backend (FastAPI)     |
+|    SentinelSOC Backend (FastAPI)  |
 |            Port 8000              |
 |  +---------+  +----------+       |
 |  | Surface |  | Response |       |
@@ -429,34 +382,24 @@ Rust Agent       → Events       → Chain Detection → Kill-chain response
 ## Modules
 
 ### Surface — Attack Surface Management
-
 Continuous discovery and vulnerability assessment.
-
 - **Asset Discovery** — nmap service detection with OS fingerprinting (`-sV -O`)
 - **Vulnerability Scanning** — Nuclei integration with deterministic risk scoring
 - **Hardening Checks** — Configuration audits with actionable remediation
 - **Scheduled Scans** — Full scan (2 h), quick scan (30 min), discovery (1 h)
 
 ### Response — Autonomous Incident Response (SOAR)
-
 Deterministic-first alert triage with automated action execution.
-
 - **<1 ms Fast Path** — Sigma check → IOC cache → playbook → done, no AI round-trip
 - **10 Deterministic Playbooks** — `auto_block_brute_force`, `auto_block_sql_injection`, `auto_respond_c2_beacon`, `ransomware_kill_chain_response`, and 6 more
 - **Guardrail System** — Per-action-type policy (`auto_approve` / `require_approval` / `never_auto`) plus a safe-IP short-circuit that no verdict can override
 - **Full Audit Trail** — Every decision logged: reasoning, confidence, timestamp, action taken
 
 ### Phantom — Honeypot Deception
-
 Deploy decoy services that attract, profile, and trap attackers.
-
 - **SSH Honeypot** (port 2222) — Paramiko server with fake banner, captures credentials and commands
 - **HTTP Honeypot** (port 8888) — Rotating decoy pages: Jenkins, WordPress, phpMyAdmin
 - **Breadcrumb Traps** — Fake `.env` files with tracked credentials; attacker reuses them → CRITICAL incident
-
-### Ransomware Defense — New in v1.6
-
-See [Ransomware Defense](#ransomware-defense-v16) above and [docs/seo/ransomware-defense.md](docs/seo/ransomware-defense.md).
 
 ---
 
@@ -466,7 +409,7 @@ See [Ransomware Defense](#ransomware-defense-v16) above and [docs/seo/ransomware
 |---|---|
 | Backend | Python 3.12, FastAPI, SQLAlchemy async, APScheduler |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, Recharts |
-| Database | PostgreSQL 16 (asyncpg) |
+| Database | PostgreSQL 16 (asyncpg), Redis (cache/pubsub) |
 | Threat Intel | RansomLook, CISA, Spamhaus, Tor exit list, MaxMind GeoIP-Lite |
 | Desktop | Tauri v2, Rust |
 | Endpoint Agent | Rust (tokio, notify, sysinfo) |
@@ -480,7 +423,7 @@ See [Ransomware Defense](#ransomware-defense-v16) above and [docs/seo/ransomware
 ## Project Structure
 
 ```
-aegis/
+SentinelSOC/
 ├── backend/                    # FastAPI application
 │   ├── app/
 │   │   ├── api/                # 25 API routers (140+ endpoints)
@@ -500,9 +443,8 @@ aegis/
 │       └── ransomware/         # RaaS timeline, events, decryptor lookup
 ├── agent-rust/                 # Standalone Rust EDR agent
 │   └── src/ransomware/         # Canary, entropy, killer, rollback
-├── desktop-tauri/              # AEGIS Manager desktop app (Tauri v2)
+├── desktop-tauri/              # SentinelSOC Manager desktop app (Tauri v2)
 ├── docs/                       # Documentation
-│   └── seo/                    # Explainer pages (what-is, ransomware, comparison)
 ├── .well-known/
 │   └── llms.txt                # LLM-discoverable site structure
 ├── docker-compose.yml
@@ -529,20 +471,11 @@ All endpoints under `/api/v1/` require `X-API-Key` header or JWT Bearer token.
 
 WebSocket at `/ws` for real-time event streaming.
 
-Full API reference: [docs/api/](docs/api/)
-
 ---
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-Areas where help is especially valued:
-- **Sigma rules** — detection rules for new ransomware families and attack patterns
-- **Threat feeds** — integrating additional RaaS intelligence sources
-- **Endpoint agents** — Linux and macOS agent builds
-- **Documentation** — deployment guides, tutorials, attack scenario walkthroughs
-- **Testing** — expanding coverage of the ransomware kill-chain path
 
 ---
 
@@ -554,126 +487,12 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md) for our responsible disclo
 
 ## License
 
-AEGIS is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
-
-Free to use, modify, and distribute. If you run a modified version as a network service, you must make the source code available to users.
+SentinelSOC is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
 ---
-
-## More Reading
-
-- [What is AEGIS? — Full explainer](docs/seo/what-is-aegis.md)
-- [How AEGIS detects ransomware](docs/seo/ransomware-defense.md)
-- [AEGIS vs Wazuh / OSSEC / Elastic Security](docs/seo/comparison.md)
-- [Architecture deep dive](ARCHITECTURE.md)
-- [Contributing](CONTRIBUTING.md)
-
----
-
-<!--
-JSON-LD structured data for schema.org SoftwareApplication + FAQPage
-Paste this block into any HTML landing page <head> to enable rich results.
-
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@graph": [
-    {
-      "@type": "SoftwareApplication",
-      "name": "AEGIS",
-      "alternateName": "AEGIS Autonomous Defense Platform",
-      "description": "Open-source, self-hosted autonomous cybersecurity defense platform. Detects ransomware, lateral movement, and intrusions in <1 ms using 163 enabled Sigma rules + 4 chain detections. Offline-capable. No cloud AI required.",
-      "applicationCategory": "SecurityApplication",
-      "operatingSystem": "Linux, macOS, Windows",
-      "softwareVersion": "1.7.33",
-      "datePublished": "2026-05-01",
-      "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-      "url": "https://github.com/SentinelSOC/SentinelSOC",
-      "downloadUrl": "https://github.com/SentinelSOC/SentinelSOC/releases/latest",
-      "codeRepository": "https://github.com/SentinelSOC/SentinelSOC",
-      "programmingLanguage": ["Python", "TypeScript", "Rust"],
-      "keywords": [
-        "open source EDR",
-        "self-hosted ransomware defense",
-        "deterministic SOAR",
-        "open source SIEM alternative",
-        "MITRE ATT&CK detection",
-        "ransomware kill-chain",
-        "offline security platform",
-        "open source XDR",
-        "Sigma rules",
-        "autonomous incident response"
-      ],
-      "featureList": [
-        "168 Sigma correlation rules with <1 ms evaluation",
-        "12 ransomware-specific detection rules (MITRE T1490/T1486/T1105/T1218/T1021)",
-        "Ransomware kill-chain detection and response",
-        "RaaS threat intelligence feed (RansomLook + CISA)",
-        "Recovery orchestration (tmutil/btrfs/zfs/VSS)",
-        "SSH and HTTP honeypots with breadcrumb traps",
-        "Offline-capable (AEGIS_AI_MODE=disabled)",
-        "Real firewall enforcement (pfctl/iptables)",
-        "Rust endpoint agent with entropy classifier",
-        "Self-hosted with Docker Compose"
-      ],
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
-    },
-    {
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is AEGIS cybersecurity?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "AEGIS is an open-source, self-hosted autonomous defense platform that detects ransomware, lateral movement, and intrusions in real time. It evaluates 163 enabled Sigma rules + 4 chain detections in <1 ms, runs deception honeypots, and enforces firewall blocks via pfctl/iptables — all without requiring a cloud AI service."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How does AEGIS detect ransomware?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "AEGIS v1.6 ships 12 ransomware-specific Sigma rules + 1 kill-chain detection mapped to MITRE ATT&CK techniques T1490, T1486, T1105, T1218, and T1021. It detects shadow-copy deletion, mass file encryption (via write-event rate analysis), canary file trips, ransom note drops, LOLBin staging (certutil/rundll32), SMB lateral movement, and WinRM remote execution. Entropy-based analysis is in development. Events are evaluated in <1 ms using an O(1) type-indexed correlation engine."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Can AEGIS run without an internet connection or AI API key?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. Set AEGIS_AI_MODE=disabled and the entire stack runs on deterministic Sigma rules, Jinja2 templates, and static playbooks. No LLM call is made. The RaaS intel feed falls back to its on-disk cache. All detection, blocking, and recovery functions continue to operate."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How does AEGIS compare to Wazuh or Elastic Security?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "AEGIS offers <1 ms in-memory Sigma evaluation versus 5–60 s pipeline latency in Wazuh or Elastic. It ships with a ransomware kill-chain out of the box, SSH/HTTP honeypots, and RaaS threat intel — none of which are available in Wazuh or OSSEC by default. Snapshot recovery orchestration is in development. Deployment is a single `docker compose up -d` versus multi-node agent rollout for Wazuh or weeks of Elasticsearch setup."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Is AEGIS free and open source?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. AEGIS is licensed under AGPL-3.0. The public repository includes ransomware detection, honeypots, Sigma rules, firewall enforcement, and recovery orchestration as open-source components. Core capabilities run fully offline without external dependencies."
-          }
-        }
-      ]
-    }
-  ]
-}
-</script>
--->
 
 <div align="center">
 
-Built by SentinelSOC · [SentinelSOC](https://github.com/SentinelSOC/SentinelSOC) · AGPL-3.0
+Built with ❤️ · [SentinelSOC](https://github.com/Poornima16B/SentinelSOC) · AGPL-3.0
 
 </div>
