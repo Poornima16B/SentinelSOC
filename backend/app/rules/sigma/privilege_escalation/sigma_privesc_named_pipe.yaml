@@ -1,0 +1,26 @@
+id: sigma_privesc_named_pipe
+name: Named Pipe Impersonation
+kind: sigma
+severity: high
+enabled: false
+tactics:
+- PrivilegeEscalation
+techniques:
+- T1134.001
+data_sources:
+- edr
+condition:
+  event_type: pipe_creation
+  filter:
+    path_contains:
+    - \\.\pipe\
+    - ImpersonateNamedPipeClient
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `pipe_creation` events. node-tauri's
+  ETW session subscribes to no named-pipe provider. To revive it, add one to
+  the Windows sensor and map it in edr_events, then set `enabled: true`.
+
+  Named pipe created for token impersonation.

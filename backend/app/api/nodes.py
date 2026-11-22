@@ -1,0 +1,987 @@
+"""
+Node enrollment API.
+
+Provides a user-friendly enrollment flow where the AEGIS Node app
+generates a short code (C6-XXXX-XXXX), the user pastes it in the
+dashboard, and the backend validates and creates an agent record.
+"""
+
+import hmac
+import logging
+import os
+import secrets
+import string
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import select, func, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.core.auth import (
+    NODE_TOKEN_REVOKED, AuthContext, new_node_token, require_analyst, require_viewer,
+)
+from app.core.events import event_bus
+from app.models.endpoint_agent import EndpointAgent, AgentStatus
+from app.services import asset_risk
+from app.services.edr_transport import publish_agent_batch
+
+from app.config import settings
+
+logger = logging.getLogger("aegis.nodes")
+router = APIRouter(prefix="/nodes", tags=["nodes"])
+
+# ---------------------------------------------------------------------------
+# Node-facing shared secret (B5 / P0-12)
+#
+# /heartbeat, /announce, /status/{code}, /events and /report-assets are
+# called directly by the AEGIS Node agent and identify themselves only by
+# node_id / enroll_code (both are effectively-guessable/enumerable UUID-like
+# strings, not real credentials) — there is no per-agent secret field on
+# EndpointAgent today. Until that model gains a per-node secret, we
+# authenticate with a single shared secret (AEGIS_NODE_SECRET) that the
+# Node app must send back as X-AEGIS-Node-Auth.
+#
+# OPTIONAL-ACCEPT / ATOMIC-ROLLOUT COMPAT MODE: if AEGIS_NODE_SECRET is not
+# set on the backend (empty/unset), the check is a no-op and all requests
+# are accepted exactly as before this change, so already-enrolled Node
+# agents (which don't yet send the header) keep working. Once an operator
+# sets AEGIS_NODE_SECRET, the header is strictly enforced on these routes.
+# ---------------------------------------------------------------------------
+
+
+def _verify_node_secret(x_aegis_node_auth: Optional[str] = Header(default=None)) -> None:
+    expected = os.getenv("AEGIS_NODE_SECRET", "").strip()
+    if not expected:
+        return  # compat mode: no secret configured yet — accept
+    if not x_aegis_node_auth or not hmac.compare_digest(x_aegis_node_auth, expected):
+        raise HTTPException(status_code=401, detail="invalid or missing X-AEGIS-Node-Auth header")
+
+
+def _node_secret_configured() -> bool:
+    return bool(os.getenv("AEGIS_NODE_SECRET", "").strip())
+
+
+def _authorize_node_post(agent, node_token: Optional[str], node_id_header: Optional[str]) -> None:
+    """Decide whether this HTTP caller may post as `agent`.
+
+    * The host monitor runs inside this process and writes to the database
+      directly. Nothing legitimate ever posts as it over HTTP, and its id is
+      derived from the hostname, so that id is refused outright.
+    * A caller that presents a per-node token is judged on it alone: it must be
+      this node's token. A wrong token is never downgraded to "no credential".
+    * With neither a token nor the shared secret, the request is accepted only
+      in compatibility mode (older agents), i.e. unless
+      AEGIS_NODE_REQUIRE_TOKEN is set and the node holds a token.
+    """
+    from app.core.auth import hash_node_token
+    from app.services.host_monitor import AGENT_ID as _HOST_AGENT_ID
+
+    # Called outside FastAPI (tests, internal callers) the Header() defaults
+    # arrive as marker objects, not strings: that is "no credential".
+    node_token = node_token if isinstance(node_token, str) and node_token else None
+    node_id_header = node_id_header if isinstance(node_id_header, str) else None
+
+    if agent.id == _HOST_AGENT_ID:
+        raise HTTPException(status_code=403, detail="this node does not report over HTTP")
+
+    stored = getattr(agent, "node_token_hash", None)
+    if node_token:
+        ok = bool(stored) and node_id_header == agent.id and hmac.compare_digest(
+            stored, hash_node_token(node_token)
+        )
+        if not ok:
+            raise HTTPException(status_code=401, detail="invalid node token")
+        return
+    if _node_secret_configured():
+        return  # the route dependency already verified X-AEGIS-Node-Auth
+    if settings.AEGIS_NODE_REQUIRE_TOKEN and stored:
+        raise HTTPException(status_code=401, detail="node token required")
+
+
+# Free-text fields a node sends end up in incidents, assets and logs.
+_SAFE_LABEL = r"^[\w .:@/()+\-]*$"
+_MAX_PENDING_ANNOUNCEMENTS = 500
+
+
+def _verify_node_secret_strict(x_aegis_node_auth: Optional[str] = Header(default=None)) -> None:
+    """Like _verify_node_secret but with NO compat mode: token re-issue is a
+    credential-minting path, so it stays closed unless a secret is configured."""
+    expected = os.getenv("AEGIS_NODE_SECRET", "").strip()
+    if not expected:
+        raise HTTPException(status_code=403, detail="node token re-issue disabled: AEGIS_NODE_SECRET is not set")
+    if not x_aegis_node_auth or not hmac.compare_digest(x_aegis_node_auth, expected):
+        raise HTTPException(status_code=401, detail="invalid or missing X-AEGIS-Node-Auth header")
+
+# ---------------------------------------------------------------------------
+# In-memory pending enrollment codes
+# In production, use Redis with TTL keys.
+# ---------------------------------------------------------------------------
+
+# code -> { agent_id, hostname, os_info, ip_address, created_at, agent_version }
+# After the manager enrolls the code the entry is kept (enrolled=True) until it
+# expires, so the agent's next /status poll learns its node_id and collects its
+# one-time node_token.
+_pending_enrollments: dict[str, dict] = {}
+
+ENROLLMENT_TTL_MINUTES = 15
+
+
+def _generate_code() -> str:
+    """Generate a code like C6-AB12-XY34."""
+    chars = string.ascii_uppercase + string.digits
+    part1 = "".join(secrets.choice(chars) for _ in range(4))
+    part2 = "".join(secrets.choice(chars) for _ in range(4))
+    return f"C6-{part1}-{part2}"
+
+
+def _cleanup_expired():
+    """Remove expired enrollment codes."""
+    now = datetime.utcnow()
+    expired = [
+        code
+        for code, info in _pending_enrollments.items()
+        if now - info["created_at"] > timedelta(minutes=ENROLLMENT_TTL_MINUTES)
+    ]
+    for code in expired:
+        del _pending_enrollments[code]
+
+
+# ---------------------------------------------------------------------------
+# Schemas
+# ---------------------------------------------------------------------------
+
+class HeartbeatRequest(BaseModel):
+    node_id: str
+    # Accept both naming conventions (node-tauri uses cpu_usage, Python agent uses cpu)
+    cpu: float = 0
+    mem: float = 0
+    disk: float = 0
+    cpu_usage: float = 0
+    ram_usage: float = 0
+    disk_usage: float = 0
+    processes: int = 0
+    process_count: int = 0
+    events_count: int = 0
+    hostname: str | None = None
+    uptime_seconds: int = 0
+    suspicious_processes: list = []
+    timestamp: str | None = None
+
+
+class HeartbeatResponse(BaseModel):
+    status: str
+    commands: list = []
+
+
+class EnrollRequest(BaseModel):
+    code: str
+    node_type: str = "workspace"  # "server" | "workspace"
+
+
+class EnrollResponse(BaseModel):
+    status: str
+    node_id: str
+    hostname: str
+    message: str
+
+
+class NodeOut(BaseModel):
+    id: str
+    hostname: str
+    os_info: str | None = None
+    ip_address: str | None = None
+    agent_version: str
+    status: str
+    last_heartbeat: str | None = None
+    node_type: str = "workspace"
+    tags: list = []
+    asset_count: int = 0
+    created_at: str | None = None
+    cpu: float = 0
+    mem: float = 0
+    disk: float = 0
+    processes: int = 0
+
+
+class NodeGenerateResponse(BaseModel):
+    code: str
+    expires_in_minutes: int = ENROLLMENT_TTL_MINUTES
+
+
+# ---------------------------------------------------------------------------
+# Routes: Node app facing (generate code)
+# ---------------------------------------------------------------------------
+
+@router.post("/generate-code", response_model=NodeGenerateResponse)
+async def generate_enrollment_code(
+    body: dict,
+    auth: AuthContext = Depends(require_analyst),
+):
+    """
+    Called by the AEGIS Node app on the target machine.
+    Generates a short enrollment code that the user pastes in the dashboard.
+    Body: { agent_id, hostname, os_info, ip_address, agent_version }
+    """
+    _cleanup_expired()
+
+    code = _generate_code()
+    while code in _pending_enrollments:
+        code = _generate_code()
+
+    _pending_enrollments[code] = {
+        "agent_id": body.get("agent_id", ""),
+        "hostname": body.get("hostname", "unknown"),
+        "os_info": body.get("os_info", ""),
+        "ip_address": body.get("ip_address", ""),
+        "agent_version": body.get("agent_version", "1.0.0"),
+        "node_type": body.get("node_type", "workspace"),
+        "created_at": datetime.utcnow(),
+    }
+
+    logger.info(f"Enrollment code generated: {code} for host {body.get('hostname')}")
+    return NodeGenerateResponse(code=code, expires_in_minutes=ENROLLMENT_TTL_MINUTES)
+
+
+# ---------------------------------------------------------------------------
+# Routes: Node heartbeat (no auth — node identifies itself by node_id)
+# ---------------------------------------------------------------------------
+
+@router.post("/heartbeat", response_model=HeartbeatResponse, dependencies=[Depends(_verify_node_secret)])
+async def node_heartbeat(
+    body: HeartbeatRequest,
+    db: AsyncSession = Depends(get_db),
+    x_aegis_node_token: Optional[str] = Header(default=None),
+    x_aegis_node_id: Optional[str] = Header(default=None),
+):
+    """
+    Called periodically by the AEGIS Node agent to report health metrics.
+    Updates the agent record with latest metrics and marks it as online.
+    No API-key auth required — the node authenticates via its own agent_id.
+    """
+    logger.debug(f"Heartbeat from {body.node_id}: cpu={body.cpu}/{body.cpu_usage} mem={body.mem}/{body.ram_usage} disk={body.disk}/{body.disk_usage} procs={body.processes}/{body.process_count}")
+    result = await db.execute(
+        select(EndpointAgent).where(EndpointAgent.id == body.node_id)
+    )
+    agent = result.scalar_one_or_none()
+
+    if not agent:
+        raise HTTPException(status_code=404, detail="Node not registered. Enroll first.")
+    _authorize_node_post(agent, x_aegis_node_token, x_aegis_node_id)
+
+    # Update status and heartbeat timestamp
+    agent.status = AgentStatus.online
+    agent.last_heartbeat = datetime.utcnow()
+
+    # Store metrics — accept both naming conventions
+    metrics = {
+        "cpu": body.cpu_usage if body.cpu_usage > 0 else body.cpu,
+        "mem": body.ram_usage if body.ram_usage > 0 else body.mem,
+        "disk": body.disk_usage if body.disk_usage > 0 else body.disk,
+        "processes": body.process_count if body.process_count > 0 else body.processes,
+        "events_count": body.events_count,
+        "uptime_seconds": body.uptime_seconds,
+        "suspicious_processes": len(body.suspicious_processes),
+        "reported_at": datetime.utcnow().isoformat(),
+    }
+    config = dict(agent.config) if agent.config else {}
+    config["last_metrics"] = metrics
+    agent.config = config
+
+    # Flag JSON column as modified so SQLAlchemy detects the change
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(agent, "config")
+
+    await db.commit()
+
+    logger.debug(f"Heartbeat from {body.node_id}: cpu={body.cpu}% mem={body.mem}%")
+
+    # Return commands list (placeholder for future remote command dispatch)
+    return HeartbeatResponse(status="ok", commands=[])
+
+
+# ---------------------------------------------------------------------------
+# Routes: Dashboard facing
+# ---------------------------------------------------------------------------
+
+@router.post("/enroll", response_model=EnrollResponse)
+async def enroll_node(
+    body: EnrollRequest,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    User pastes an enrollment code from the Node app.
+    Validates the code and creates the agent record.
+    """
+    _cleanup_expired()
+
+    code = body.code.strip().upper()
+
+    # Validate format
+    import re
+    if not re.match(r"^C6-[A-Z0-9]{4}-[A-Z0-9]{4}$", code):
+        raise HTTPException(status_code=400, detail="Invalid code format. Expected C6-XXXX-XXXX.")
+
+    # Only a code an agent announced (or generate-code issued) can be enrolled.
+    # Peek, don't pop: the entry is replaced below once the agent row is saved,
+    # so a failure before then leaves the pending code intact.
+    info = _pending_enrollments.get(code)
+    if info is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Unknown or expired enrollment code — make sure the agent is running and showing this code",
+        )
+    if info.get("enrolled"):
+        raise HTTPException(status_code=409, detail="This enrollment code has already been used.")
+
+    client = auth.client
+    agent_id = f"node-{secrets.token_hex(8)}"
+    _hostname = info["hostname"]
+    _os_info = info.get("os_info")
+    _ip_address = info.get("ip_address")
+    _agent_version = info.get("agent_version", "pending")
+    _node_type = body.node_type if body.node_type != "workspace" else info.get("node_type", "workspace")
+
+    # Check if already registered
+    result = await db.execute(
+        select(EndpointAgent).where(
+            EndpointAgent.id == agent_id,
+            EndpointAgent.client_id == client.id,
+        )
+    )
+    existing = result.scalar_one_or_none()
+
+    # Per-node upload credential: only the hash is stored; the plaintext is
+    # handed to the agent once, by /nodes/status/{code}.
+    node_token, node_token_hash = new_node_token()
+
+    if existing:
+        existing.node_token_hash = node_token_hash
+        existing.hostname = _hostname
+        existing.os_info = _os_info
+        existing.ip_address = _ip_address
+        existing.agent_version = _agent_version
+        existing.node_type = _node_type
+        existing.status = AgentStatus.online
+        existing.last_heartbeat = datetime.utcnow()
+        await db.commit()
+    else:
+        agent = EndpointAgent(
+            id=agent_id,
+            client_id=client.id,
+            hostname=_hostname,
+            os_info=_os_info,
+            ip_address=_ip_address,
+            agent_version=_agent_version,
+            node_type=_node_type,
+            status=AgentStatus.online,
+            last_heartbeat=datetime.utcnow(),
+            tags=["enrolled-via-code"],
+            config={},
+            node_token_hash=node_token_hash,
+        )
+        db.add(agent)
+        await db.commit()
+
+    _pending_enrollments[code] = {
+        **info,
+        "created_at": datetime.utcnow(),
+        "enrolled": True,
+        "client_id": client.id,
+        "client_name": client.name,
+        "node_id": agent_id,
+        "node_token": node_token,
+    }
+
+    logger.info(f"Node enrolled via code {code}: {agent_id} ({_hostname})")
+
+    try:
+        await event_bus.publish("agent_registered", {
+            "agent_id": agent_id,
+            "hostname": _hostname,
+            "client_id": client.id,
+        })
+    except Exception:
+        pass
+
+    return EnrollResponse(
+        status="enrolled",
+        node_id=agent_id,
+        hostname=_hostname,
+        message=f"Node '{_hostname}' enrolled successfully. It will appear in your dashboard shortly.",
+    )
+
+
+@router.get("", response_model=list[NodeOut])
+async def list_nodes(
+    status: Optional[str] = None,
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all enrolled nodes (agents) for the client."""
+    from sqlalchemy import update as sql_update
+
+    client = auth.client
+
+    # Mark stale agents
+    stale_threshold = datetime.utcnow() - timedelta(minutes=2)
+    await db.execute(
+        sql_update(EndpointAgent)
+        .where(
+            EndpointAgent.client_id == client.id,
+            EndpointAgent.status == AgentStatus.online,
+            EndpointAgent.last_heartbeat < stale_threshold,
+        )
+        .values(status=AgentStatus.stale)
+    )
+    await db.commit()
+
+    query = select(EndpointAgent).where(
+        EndpointAgent.client_id == client.id,
+        EndpointAgent.status != AgentStatus.deregistered,
+    )
+    if status:
+        try:
+            query = query.where(EndpointAgent.status == AgentStatus(status))
+        except ValueError:
+            pass
+    query = query.order_by(EndpointAgent.last_heartbeat.desc())
+
+    result = await db.execute(query)
+    agents = result.scalars().all()
+
+    nodes = []
+    for a in agents:
+        metrics = (a.config or {}).get("last_metrics", {})
+        nodes.append(NodeOut(
+            id=a.id,
+            hostname=a.hostname,
+            os_info=a.os_info,
+            ip_address=a.ip_address,
+            agent_version=a.agent_version,
+            node_type=getattr(a, "node_type", None) or "workspace",
+            status=a.status.value if hasattr(a.status, "value") else a.status,
+            last_heartbeat=a.last_heartbeat.isoformat() if a.last_heartbeat else None,
+            tags=a.tags or [],
+            asset_count=0,
+            created_at=a.created_at.isoformat() if a.created_at else None,
+            cpu=metrics.get("cpu", 0),
+            mem=metrics.get("mem", 0),
+            disk=metrics.get("disk", 0),
+            processes=metrics.get("processes", 0),
+        ))
+    return nodes
+
+
+@router.get("/{node_id}", response_model=NodeOut)
+async def get_node(
+    node_id: str,
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get details for a specific node."""
+    client = auth.client
+
+    result = await db.execute(
+        select(EndpointAgent).where(
+            EndpointAgent.id == node_id,
+            EndpointAgent.client_id == client.id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    metrics = (agent.config or {}).get("last_metrics", {})
+    return NodeOut(
+        id=agent.id,
+        hostname=agent.hostname,
+        os_info=agent.os_info,
+        ip_address=agent.ip_address,
+        agent_version=agent.agent_version,
+        node_type=getattr(agent, "node_type", None) or "workspace",
+        status=agent.status.value if hasattr(agent.status, "value") else agent.status,
+        last_heartbeat=agent.last_heartbeat.isoformat() if agent.last_heartbeat else None,
+        tags=agent.tags or [],
+        asset_count=0,
+        created_at=agent.created_at.isoformat() if agent.created_at else None,
+        cpu=metrics.get("cpu", 0),
+        mem=metrics.get("mem", 0),
+        disk=metrics.get("disk", 0),
+        processes=metrics.get("processes", 0),
+    )
+
+
+@router.delete("/{node_id}", status_code=204)
+async def remove_node(
+    node_id: str,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove (deregister) a node."""
+    client = auth.client
+
+    result = await db.execute(
+        select(EndpointAgent).where(
+            EndpointAgent.id == node_id,
+            EndpointAgent.client_id == client.id,
+        )
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    # Hard delete — remove completely from DB
+    await db.delete(agent)
+    await db.commit()
+    logger.info(f"Node deleted: {node_id}")
+
+
+async def _set_token_state(node_id: str, client_id: str, value: Optional[str], db: AsyncSession) -> None:
+    result = await db.execute(
+        update(EndpointAgent)
+        .where(EndpointAgent.id == node_id, EndpointAgent.client_id == client_id)
+        .values(node_token_hash=value)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Node not found")
+    await db.commit()
+
+
+@router.post("/{node_id}/token/revoke", status_code=204)
+async def revoke_node_token(
+    node_id: str,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable the node's upload token. It cannot be re-issued until rotated."""
+    await _set_token_state(node_id, auth.client.id, NODE_TOKEN_REVOKED, db)
+    logger.info(f"Node token revoked: {node_id}")
+
+
+@router.post("/{node_id}/token/rotate", status_code=204)
+async def rotate_node_token(
+    node_id: str,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """Invalidate the node's token and let the agent claim a fresh one."""
+    await _set_token_state(node_id, auth.client.id, None, db)
+    logger.info(f"Node token rotated (awaiting re-issue): {node_id}")
+
+
+class TokenReissueRequest(BaseModel):
+    node_id: str
+
+
+@router.post("/token/reissue", dependencies=[Depends(_verify_node_secret_strict)])
+async def reissue_node_token(
+    body: TokenReissueRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """One-time token claim for a node that has none (enrolled before per-node
+    tokens existed, or rotated by an admin).
+
+    Requires the shared node secret (and refuses to run without one). The
+    UPDATE only matches while node_token_hash IS NULL, so a node that already
+    holds a token, or whose token was revoked, can never be re-minted here.
+    """
+    node_token, node_token_hash = new_node_token()
+    result = await db.execute(
+        update(EndpointAgent)
+        .where(EndpointAgent.id == body.node_id, EndpointAgent.node_token_hash.is_(None))
+        .values(node_token_hash=node_token_hash)
+    )
+    if result.rowcount == 0:
+        exists = await db.execute(select(EndpointAgent.id).where(EndpointAgent.id == body.node_id))
+        if exists.first() is None:
+            raise HTTPException(status_code=404, detail="Node not found")
+        raise HTTPException(status_code=409, detail="Node already has a token")
+    await db.commit()
+    logger.info(f"Node token issued via re-issue: {body.node_id}")
+    return {"node_token": node_token}
+
+
+# ---------------------------------------------------------------------------
+# Node-facing endpoints (no auth)
+# ---------------------------------------------------------------------------
+
+class AnnounceRequest(BaseModel):
+    enroll_code: str = Field(..., min_length=4, max_length=32, pattern=r"^[A-Za-z0-9\-]+$")
+    hostname: str = Field(..., min_length=1, max_length=253, pattern=_SAFE_LABEL)
+    os_name: str | None = Field(None, max_length=64, pattern=_SAFE_LABEL)
+    os_version: str | None = Field(None, max_length=64, pattern=_SAFE_LABEL)
+    local_ip: str | None = Field(None, max_length=45, pattern=r"^[0-9A-Fa-f:.]*$")
+    agent_version: str = Field("0.1.0", max_length=32, pattern=_SAFE_LABEL)
+
+
+@router.post("/announce", dependencies=[Depends(_verify_node_secret)])
+async def announce_node(body: AnnounceRequest):
+    _cleanup_expired()
+    code = body.enroll_code.strip().upper()
+    os_info = f"{body.os_name or ''} {body.os_version or ''}".strip() or None
+    if code in _pending_enrollments and _pending_enrollments[code].get("enrolled"):
+        info = _pending_enrollments[code]
+        return {
+            "status": "active",
+            "client_id": info.get("client_id"),
+            "client_name": info.get("client_name"),
+            "node_id": info.get("node_id"),
+        }
+    if code not in _pending_enrollments:
+        waiting = sum(1 for info in _pending_enrollments.values() if not info.get("enrolled"))
+        if waiting >= _MAX_PENDING_ANNOUNCEMENTS:
+            # Unauthenticated callers must not be able to grow this table
+            # without bound; entries expire after ENROLLMENT_TTL_MINUTES.
+            raise HTTPException(status_code=429, detail="too many pending enrollments; retry later")
+    _pending_enrollments[code] = {
+        "agent_id": "",
+        "hostname": body.hostname,
+        "os_info": os_info,
+        "ip_address": body.local_ip,
+        "agent_version": body.agent_version,
+        "created_at": datetime.utcnow(),
+        "enrolled": False,
+        "client_id": None,
+        "client_name": None,
+        "node_id": None,
+    }
+    logger.info(f"Node announced: {code} from {body.hostname} ({body.local_ip})")
+    return {"status": "pending", "code": code}
+
+
+@router.get("/status/{code}", dependencies=[Depends(_verify_node_secret)])
+async def check_enrollment_status(code: str):
+    _cleanup_expired()
+    code = code.strip().upper()
+    info = _pending_enrollments.get(code)
+    if not info:
+        return {"status": "expired", "message": "Code expired or not found"}
+    if info.get("enrolled"):
+        out = {
+            "status": "active",
+            "client_id": info.get("client_id"),
+            "client_name": info.get("client_name"),
+            "node_id": info.get("node_id"),
+        }
+        # Handed out exactly once; a lost response is recovered via /token/reissue.
+        node_token = info.pop("node_token", None)
+        if node_token:
+            out["node_token"] = node_token
+        return out
+    return {"status": "pending", "message": "Waiting for manager to enter code"}
+
+
+# /nodes/events types whose detection is owned by a Sigma rule; see receive_node_event.
+# suspicious_process is the agent's own name/cmdline heuristic over the same
+# process list it already streams as process telemetry to /edr/events, where
+# the Sigma rules judge it. Opening an incident here as well made cmd.exe and
+# powershell.exe alone a CRITICAL incident.
+_RULE_OWNED_NODE_EVENTS = frozenset({"registry_persistence_new", "suspicious_process"})
+
+# The agent re-sends its newest Security-log records every ~15s with no record
+# id, so the same 4697 arrives over and over. Remember what was already handed to
+# the engine for a while instead of re-evaluating it each time.
+_NODE_EVENT_TTL_SECONDS = 600.0
+_NODE_EVENT_MAX_KEYS = 4096
+_node_event_seen: dict[tuple, float] = {}
+
+
+def _bridge_to_detection(body: "NodeEventRequest") -> dict | None:
+    """Shape a node event as the endpoint event the Sigma engine understands.
+
+    Only types that feed a rule are bridged. lotl_process_creation and
+    suspicious_powershell are deliberately NOT: they are the agent's own verdict
+    on process command lines that the process_start telemetry already delivers
+    to the same rules, and bridging them as well would double-count.
+    """
+    d = body.details if isinstance(body.details, dict) else {}
+    if body.event_type == "registry_persistence_new":
+        key = d.get("key")
+        if not key:
+            return None
+        hive = d.get("hive") or ""
+        return {
+            "kind": "registry_set",
+            "severity": body.severity,
+            "timestamp": body.timestamp or datetime.utcnow().isoformat(),
+            "target": f"{hive}\\{key}" if hive else str(key),
+            "extra": {"value": d.get("value"), "source": "node_registry_watch"},
+        }
+    if body.event_type == "new_service_installed":
+        return {
+            "kind": "service_install",
+            "severity": body.severity,
+            "timestamp": body.timestamp or datetime.utcnow().isoformat(),
+            "extra": {
+                "service_name": d.get("service_name"),
+                "service_path": d.get("service_path"),
+            },
+        }
+    return None
+
+
+def _node_event_is_new(node_id: str, bridged: dict, ttl: float = _NODE_EVENT_TTL_SECONDS) -> bool:
+    import time
+
+    extra = bridged.get("extra") or {}
+    ident = (
+        node_id,
+        bridged["kind"],
+        bridged.get("target"),
+        extra.get("value"),
+        extra.get("service_name"),
+        extra.get("service_path"),
+    )
+    now = time.monotonic()
+    if len(_node_event_seen) > _NODE_EVENT_MAX_KEYS:
+        cutoff = now - _NODE_EVENT_TTL_SECONDS
+        for k in [k for k, t in _node_event_seen.items() if t < cutoff]:
+            del _node_event_seen[k]
+        if len(_node_event_seen) > _NODE_EVENT_MAX_KEYS:
+            _node_event_seen.clear()
+    last = _node_event_seen.get(ident)
+    if last is not None and now - last < ttl:
+        return False
+    _node_event_seen[ident] = now
+    return True
+
+
+_NO_REMOTE_SOURCE = frozenset({"", "unknown", "-", "::1", "::", "127.0.0.1", "localhost", "0.0.0.0"})
+
+
+def _brute_force_attribution(d: dict) -> tuple[str | None, str | None]:
+    """(remote source, target account) of a brute_force_attempt, None for each
+    the agent could not name. A burst naming neither is a count of failed
+    logons with no subject (an older agent folded every failure under
+    "unknown") and cannot be told apart from our own tooling retrying."""
+    src = str(d.get("source_ip") or "").strip()
+    acct = str(d.get("target_account") or "").strip()
+    return (None if src.lower() in _NO_REMOTE_SOURCE else src), (acct or None)
+
+
+_UNATTRIBUTED_BRUTE_FORCE_TTL = 1800.0
+
+
+def _is_unattributed_bf(body: "NodeEventRequest") -> bool:
+    d = body.details if isinstance(body.details, dict) else {}
+    return body.event_type == "brute_force_attempt" and "unattributed" in str(d.get("note", ""))
+
+
+def _brute_force_is_new(node_id: str, remote: str | None, acct: str | None) -> bool:
+    """One incident per (node, remote source, account) per TTL."""
+    return _node_event_is_new(
+        node_id, {"kind": "brute_force_attempt", "target": remote,
+                  "extra": {"value": acct}},
+    )
+
+
+class NodeEventRequest(BaseModel):
+    node_id: str = Field(..., max_length=128)
+    event_type: str = Field(..., max_length=64, pattern=r"^[A-Za-z0-9_.:\-]+$")
+    severity: str = Field("medium", max_length=16, pattern=r"^[A-Za-z]+$")
+    details: dict = {}
+    timestamp: str | None = Field(None, max_length=64)
+
+    @field_validator("details")
+    @classmethod
+    def _details_bounded(cls, v: dict) -> dict:
+        import json as _json
+        if len(_json.dumps(v, default=str)) > 32_768:
+            raise ValueError("details is too large")
+        return v
+
+
+@router.post("/events", dependencies=[Depends(_verify_node_secret)])
+async def receive_node_event(
+    body: NodeEventRequest,
+    db: AsyncSession = Depends(get_db),
+    x_aegis_node_token: Optional[str] = Header(default=None),
+    x_aegis_node_id: Optional[str] = Header(default=None),
+):
+    result = await db.execute(
+        select(EndpointAgent).where(EndpointAgent.id == body.node_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Node not found")
+    _authorize_node_post(agent, x_aegis_node_token, x_aegis_node_id)
+
+    logger.info(f"Node event from {body.node_id}: {body.event_type} [{body.severity}]")
+
+    bridged = _bridge_to_detection(body)
+    if bridged is not None and _node_event_is_new(body.node_id, bridged):
+        await publish_agent_batch(
+            client_id=agent.client_id,
+            agent_id=agent.id,
+            hostname=agent.hostname,
+            events=[bridged],
+        )
+
+    # A registry Run-key persistence event is now evaluated by
+    # sigma_persist_registry_run, which opens the (host-attributed) incident.
+    # Writing a second one here would double it, and this one carried the
+    # agent's own LAN address as source_ip. suspicious_process is likewise left
+    # to the rules that read its process telemetry.
+    detected_by_rule = body.event_type in _RULE_OWNED_NODE_EVENTS
+
+    # Failed-logon bursts should be attributable: a remote source or the target
+    # account. Older agents folded every failure under "unknown" and re-sent the
+    # same records (40 incidents in 19 minutes on one fresh node), so an
+    # unattributed burst is kept but demoted to LOW and deduplicated per node
+    # for 30 minutes. Attributed bursts dedupe per (node, source, account).
+    if body.event_type == "brute_force_attempt":
+        details = body.details if isinstance(body.details, dict) else {}
+        remote, acct = _brute_force_attribution(details)
+        if remote is None and acct is None:
+            if not _node_event_is_new(
+                body.node_id,
+                {"kind": "brute_force_attempt", "target": "unattributed"},
+                ttl=_UNATTRIBUTED_BRUTE_FORCE_TTL,
+            ):
+                return {"status": "received", "event_type": body.event_type, "ignored": "duplicate"}
+            body.severity = "low"
+            body.details = {**details, "note": "unattributed: old agent, update node-tauri"}
+            detected_by_rule = False
+        elif not _brute_force_is_new(body.node_id, remote, acct):
+            return {"status": "received", "event_type": body.event_type, "ignored": "duplicate"}
+
+    if (body.severity in ("high", "critical") or _is_unattributed_bf(body)) and not detected_by_rule:
+        from app.models.incident import Incident
+
+        # Endpoint detections are about the HOST: the agent's own LAN address
+        # is not an attacker and must never reach anything that can block an
+        # IP, so source_ip stays empty and the host is carried in the record.
+        incident = Incident(
+            client_id=agent.client_id,
+            title=f"EDR: {body.event_type}",
+            description=f"host={agent.hostname} {body.details}",
+            severity=body.severity,
+            status="open",
+            source=f"node:{body.node_id}",
+            source_ip=None,
+            raw_alert={
+                "host": agent.hostname,
+                "agent_id": agent.id,
+                "event_type": body.event_type,
+                "details": body.details,
+            },
+        )
+        db.add(incident)
+        await db.commit()
+
+    return {"status": "received", "event_type": body.event_type}
+
+
+class AssetReportRequest(BaseModel):
+    node_id: str
+    hostname: str | None = None
+    os_name: str | None = None
+    os_version: str | None = None
+    local_ip: str | None = None
+    cpu_brand: str | None = None
+    cpu_count: int | None = None
+    ram_total_mb: int | None = None
+    disk_total_gb: float | None = None
+    open_services: list = []
+    scan_timestamp: str | None = None
+
+
+@router.post("/report-assets", dependencies=[Depends(_verify_node_secret)])
+async def report_assets(
+    body: AssetReportRequest,
+    db: AsyncSession = Depends(get_db),
+    x_aegis_node_token: Optional[str] = Header(default=None),
+    x_aegis_node_id: Optional[str] = Header(default=None),
+):
+    import uuid as _uuid
+    from app.models.asset import Asset
+
+    result = await db.execute(
+        select(EndpointAgent).where(EndpointAgent.id == body.node_id)
+    )
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Node not found")
+    _authorize_node_post(agent, x_aegis_node_token, x_aegis_node_id)
+
+    client_id = agent.client_id
+    if body.local_ip:
+        agent.ip_address = body.local_ip
+    if body.os_name:
+        agent.os_info = f"{body.os_name} {body.os_version or ''}".strip()
+
+    ip = body.local_ip or "127.0.0.1"
+    # Proper port dicts (never bare ints) so downstream readers — asset_risk,
+    # scheduled_scanner's merge-by-port refresh, the surface API — all see
+    # the shape they expect instead of silently dropping non-dict entries.
+    ports_list = [
+        {
+            "port": s.get("port"),
+            "protocol": "tcp",
+            "service": s.get("service") or "unknown",
+            "state": "open",
+        }
+        for s in body.open_services
+        if s.get("port")
+    ]
+    techs = [
+        f"{s.get('service', 'unknown')}:{s.get('port')}"
+        for s in body.open_services
+        if s.get("service") and s.get("service") != "unknown"
+    ]
+
+    existing = await db.execute(
+        select(Asset)
+        .where(Asset.client_id == client_id, Asset.ip_address == ip)
+        .order_by(Asset.created_at.asc())
+    )
+    existing_asset = existing.scalars().first()
+    assets_created = assets_updated = 0
+
+    if existing_asset:
+        existing_asset.hostname = body.hostname or existing_asset.hostname
+        # Merge new ports into the existing set keyed by port number — union
+        # of old+new, never a destructive replace of the whole array.
+        merged_ports = {
+            p["port"]: p
+            for p in (existing_asset.ports or [])
+            if isinstance(p, dict) and isinstance(p.get("port"), int)
+        }
+        for p in ports_list:
+            merged_ports[p["port"]] = p
+        existing_asset.ports = list(merged_ports.values())
+        existing_asset.technologies = techs
+        existing_asset.last_scan_at = datetime.utcnow()
+        assets_updated = 1
+    else:
+        floor_score = asset_risk.score_asset(
+            ports=ports_list,
+            ip_address=ip,
+            hostname=body.hostname,
+        )["risk_score"]
+        db.add(Asset(
+            id=str(_uuid.uuid4()),
+            client_id=client_id,
+            hostname=body.hostname or "unknown",
+            ip_address=ip,
+            asset_type="server",
+            ports=ports_list,
+            technologies=techs,
+            status="active",
+            risk_score=floor_score,
+            last_scan_at=datetime.utcnow(),
+        ))
+        assets_created = 1
+
+    await db.commit()
+    logger.info(f"Asset report from {body.node_id}: {len(body.open_services)} services")
+    return {
+        "status": "ok",
+        "services_found": len(body.open_services),
+        "assets_created": assets_created,
+        "assets_updated": assets_updated,
+    }

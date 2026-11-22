@@ -1,0 +1,29 @@
+id: sigma_cve_n_able_n_central_2026_86218
+name: N-able N-central Exploitation Attempt (CVE-2026-86218)
+kind: sigma
+severity: low
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- http_logs
+condition:
+  event_type: http_request
+  filter:
+    path_contains:
+    - /dms2/
+    - /discovery/
+  count_threshold: 10
+  time_window_seconds: 300
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'Detects attempted exploitation of CVE-2026-86218 in N-able N-central (CVSS 10.0). Demoted
+  to low (alert-only): no product-specific URL has been published for this CVE, so the only observable
+  is request rhythm on a generic path, and that matches ordinary application traffic. It is kept as a
+  hunting signal and chain input, never as an auto-block trigger.'
+references:
+- https://arcticwolf.com/resources/blog/cve-2026-86218/

@@ -1,0 +1,33 @@
+id: sigma_c2_beacon_regular
+name: C2 Beacon - Regular Interval
+kind: sigma
+severity: critical
+enabled: false
+tactics:
+- CommandAndControl
+techniques:
+- T1071.001
+data_sources:
+- network
+condition:
+  event_type: connection
+  count_threshold: 10
+  time_window_seconds: 600
+  group_by: destination_ip
+  filter:
+    direction: outbound
+    target_type: external
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): the rule sits on event type `connection` and
+  needs `target_type` plus interval analysis of repeated connections from one
+  host to one destination. Endpoint agents now deliver each outbound
+  connection as `network_connection` (remote peer in source_ip), but that
+  event has no target_type and the rule groups by destination, so it would
+  count peers, not beaconing hosts. To revive it, retarget the rule to
+  `network_connection` grouped by hostname with a per-destination repeat count
+  (or have the agent report connection intervals), then set `enabled: true`.
+
+  Outbound connections at regular intervals suggesting C2 beaconing.

@@ -1,0 +1,35 @@
+id: sigma_web_ssrf
+name: Server-Side Request Forgery (SSRF)
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- pm2
+- web_log
+condition:
+  event_type: web_request
+  count_threshold: 1
+  time_window_seconds: 60
+  group_by: source_ip
+  filter:
+    path_contains:
+    - 169.254.169.254
+    - ://localhost
+    - =localhost
+    - ://127.0.0.1
+    - =127.0.0.1
+    - ://0.0.0.0
+    - metadata.google
+entityMappings:
+- type: IP
+  field: source_ip
+description: >
+  Detects SSRF attempts targeting internal resources or cloud metadata. Loopback
+  names are only matched in a URL position (`://host`) or as a parameter value
+  (`=host`): the bare substrings also matched ordinary paths such as
+  `/localhost.key`, a scanner probe for a TLS key file that is not an SSRF.
+  Cloud metadata addresses stay bare because they have no benign use in a path.

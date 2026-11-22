@@ -1,0 +1,30 @@
+id: sigma_cve_connectwise_screenconnect_2024_1708
+name: ConnectWise ScreenConnect Exploitation Attempt (CVE-2024-1708)
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- http_logs
+condition:
+  event_type: http_request
+  filter:
+    path_contains:
+    - /setupwizard.aspx/
+  count_threshold: 10
+  time_window_seconds: 300
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'Detects the CVE-2024-1709 authentication bypass that is chained with CVE-2024-1708 on ConnectWise
+  ScreenConnect: requests to /SetupWizard.aspx with a trailing path segment, which Huntress reports is
+  never legitimate. Ten or more in five minutes from one source is automated exploitation. Previously
+  matched any path containing /services/ or /connector/, which are ordinary route names in unrelated apps.'
+references:
+- https://www.connectwise.com/company/trust/security-bulletins/connectwise-screenconnect-23.9.8
+- https://www.huntress.com/blog/a-catastrophe-for-control-understanding-the-screenconnect-authentication-bypass
+- https://www.logpoint.com/en/blog/emerging-threats/screenconnect-authentication-bypass/

@@ -1,0 +1,33 @@
+id: sigma_privesc_suid
+name: SUID Binary Exploitation
+kind: sigma
+severity: critical
+enabled: false
+tactics:
+- PrivilegeEscalation
+techniques:
+- T1548.001
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    suid: true
+    path_contains:
+    - find
+    - vim
+    - nmap
+    - python
+    - perl
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): filters on `suid`, the setuid bit of the
+  executable. No agent stats the binary it reports. The setuid-change rule
+  (chmod 4755 / u+s) is live and covers the act of setting the bit. To revive
+  this one, have the agent report the executable's mode with process_start,
+  then retarget its command-token clause to cmdline_regex and set `enabled:
+  true`.
+
+  Execution of uncommon SUID binary suggesting privilege escalation.

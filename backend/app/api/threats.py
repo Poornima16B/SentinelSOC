@@ -1,0 +1,596 @@
+from typing import Optional
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.core.auth import AuthContext, require_analyst, require_viewer
+from fastapi import Query
+from app.core.events import event_bus
+from app.models.client import Client
+from app.models.threat_intel import ThreatIntel
+from app.models.incident import Incident
+from app.modules.phantom.intel import threat_intel_generator
+from app.services.threat_intel_hub import threat_intel_hub
+from app.core.mongo_client import is_connected as mongo_connected
+from app.services.ioc_validator import validate_ioc, IOCValidationError
+from fastapi import Header
+from slowapi import Limiter
+from app.config import settings
+from app.core.client_ip import rate_limit_key
+
+router = APIRouter(prefix="/threats", tags=["threats"])
+limiter = Limiter(key_func=rate_limit_key)
+
+_MAX_SHARING_NODES = 1000
+
+
+def _hub_key_valid(presented: Optional[str]) -> bool:
+    import hmac
+    expected = (settings.AEGIS_HUB_SHARED_KEY or "").strip()
+    return bool(expected) and bool(presented) and hmac.compare_digest(presented, expected)
+
+
+# --- Schemas ---
+
+class IOCCreate(BaseModel):
+    ioc_type: str  # ip, domain, hash, url, email
+    ioc_value: str
+    threat_type: str | None = None
+    confidence: float = 0.5
+    source: str = "manual"
+    tags: list[str] = []
+
+
+class IOCOut(BaseModel):
+    id: str
+    ioc_type: str
+    ioc_value: str
+    threat_type: str | None = None
+    confidence: float | None = None
+    source: str | None = None
+    tags: list = []
+    first_seen: str | None = None
+    last_seen: str | None = None
+
+
+# --- Routes ---
+
+@router.get("/intel", response_model=list[IOCOut])
+async def list_intel(
+    ioc_type: Optional[str] = None,
+    source: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """List threat intel IOCs."""
+    query = select(ThreatIntel)
+    if ioc_type:
+        query = query.where(ThreatIntel.ioc_type == ioc_type)
+    if source:
+        query = query.where(ThreatIntel.source == source)
+    query = query.order_by(ThreatIntel.last_seen.desc()).offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    iocs = result.scalars().all()
+
+    return [
+        IOCOut(
+            id=ioc.id,
+            ioc_type=ioc.ioc_type,
+            ioc_value=ioc.ioc_value,
+            threat_type=ioc.threat_type,
+            confidence=ioc.confidence,
+            source=ioc.source,
+            tags=ioc.tags or [],
+            first_seen=ioc.first_seen.isoformat() if ioc.first_seen else None,
+            last_seen=ioc.last_seen.isoformat() if ioc.last_seen else None,
+        )
+        for ioc in iocs
+    ]
+
+
+@router.post("/intel", response_model=IOCOut, status_code=201)
+async def create_ioc(
+    body: IOCCreate,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add an IOC manually. Analyst or admin only."""
+    ioc = ThreatIntel(
+        ioc_type=body.ioc_type,
+        ioc_value=body.ioc_value,
+        threat_type=body.threat_type,
+        confidence=body.confidence,
+        source=body.source,
+        tags=body.tags,
+    )
+    db.add(ioc)
+    await db.commit()
+    await db.refresh(ioc)
+
+    return IOCOut(
+        id=ioc.id,
+        ioc_type=ioc.ioc_type,
+        ioc_value=ioc.ioc_value,
+        threat_type=ioc.threat_type,
+        confidence=ioc.confidence,
+        source=ioc.source,
+        tags=ioc.tags or [],
+        first_seen=ioc.first_seen.isoformat() if ioc.first_seen else None,
+        last_seen=ioc.last_seen.isoformat() if ioc.last_seen else None,
+    )
+
+
+@router.get("/feed")
+async def get_threat_feed(
+    format: str = "json",
+    limit: int = Query(1000, ge=1, le=10000, description="Max indicators to return (default 1000, up to 10k)."),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public threat feed endpoint -- NO authentication required.
+
+    Remote AEGIS nodes and third-party tools can pull shared IOCs from here.
+    Supports JSON (default) and STIX format.
+    Optionally pass ?since=<ISO8601> to get only recent IOCs.
+    Optionally pass ?limit=<n> (default 1000, max 10000) to pull more of the
+    ~2k+ indicators than the previous hard-coded 1000-record cap allowed.
+    """
+    since_param = request.query_params.get("since") if request else None
+
+    # If MongoDB is connected, serve from the shared hub (richer data)
+    if mongo_connected():
+        since_dt = None
+        if since_param:
+            try:
+                since_dt = datetime.fromisoformat(since_param.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+        iocs = await threat_intel_hub.pull_iocs(since=since_dt)
+        # Serialize datetimes
+        for ioc in iocs:
+            for key in ("first_seen", "last_seen"):
+                if isinstance(ioc.get(key), datetime):
+                    ioc[key] = ioc[key].isoformat()
+        # Honour the caller's limit on the hub path too.
+        iocs = iocs[:limit]
+        return {
+            "iocs": iocs,
+            "count": len(iocs),
+            "source": "sentinelsoc_hub",
+            "hub_url": "http://localhost:8001",
+        }
+
+    # Fallback: serve from local PostgreSQL
+    return await threat_intel_generator.generate_threat_feed(db, format=format, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Public threat sharing endpoints (no auth required for node-to-hub comms)
+# ---------------------------------------------------------------------------
+
+class SharedIOCSubmit(BaseModel):
+    ioc_type: str = Field(..., max_length=16, description="ip | domain | hash | url")
+    ioc_value: str = Field(..., max_length=2048, description="The indicator value")
+    threat_type: str = Field("unknown", max_length=64, description="brute_force, c2, phishing, malware, etc.")
+    confidence: float = Field(0.75, ge=0.0, le=1.0)
+    mitre_techniques: list[str] = Field(default_factory=list, max_length=32)
+    detection_source: str = Field("remote_node", max_length=64, description="Source: remote_node, honeypot, scanner, etc.")
+    node_id: str = Field("", max_length=128, description="Optional reporting node identifier")
+
+
+@router.post("/intel/share")
+@limiter.limit("60/minute")
+async def share_ioc_public(
+    request: Request,
+    body: SharedIOCSubmit,
+    x_aegis_hub_key: Optional[str] = Header(default=None),
+):
+    """
+    Public IOC sharing endpoint -- remote AEGIS nodes submit IOCs here.
+
+    No authentication is required to contribute, so an anonymous submission is
+    a tip, not a verdict: its confidence is capped below the auto-block
+    threshold, and an address AEGIS treats as safe or as shared consumer egress
+    is refused. A node that presents the hub key keeps its stated confidence.
+    """
+    if body.ioc_type == "ip":
+        from app.core.attack_detector import _is_safe_ip, is_shared_egress
+        candidate = body.ioc_value.strip()
+        if _is_safe_ip(candidate) or is_shared_egress(candidate):
+            return {"status": "rejected", "reason": "address is safelisted or shared egress"}
+    if not _hub_key_valid(x_aegis_hub_key):
+        cap = float(settings.AEGIS_HUB_UNTRUSTED_MAX_CONFIDENCE)
+        if body.confidence > cap:
+            body.confidence = cap
+    # Validate IOC to prevent poisoning
+    try:
+        validated = validate_ioc(
+            ioc_type=body.ioc_type,
+            ioc_value=body.ioc_value,
+            threat_type=body.threat_type,
+            confidence=body.confidence,
+            source_node=body.node_id,
+        )
+    except IOCValidationError as e:
+        return {"status": "rejected", "reason": str(e)}
+
+    if not mongo_connected():
+        raise HTTPException(status_code=503, detail="Threat intel hub not available (MongoDB not connected)")
+
+    result = await threat_intel_hub.share_ioc({
+        "ioc_type": validated["ioc_type"],
+        "ioc_value": validated["ioc_value"],
+        "threat_type": validated["threat_type"],
+        "confidence": validated["confidence"],
+        "mitre_techniques": body.mitre_techniques,
+        "detection_source": body.detection_source,
+    })
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("reason"))
+
+    # Broadcast to connected WebSocket clients
+    try:
+        await event_bus.publish("threat_shared", {
+            "_event_type": "threat_shared",
+            "ioc_type": body.ioc_type,
+            "ioc_value": body.ioc_value,
+            "threat_type": body.threat_type,
+            "confidence": body.confidence,
+            "detection_source": body.detection_source,
+            "node_id": body.node_id,
+        })
+    except Exception:
+        pass
+
+    return {"status": "accepted", "upserted": result.get("upserted", False)}
+
+
+@router.get("/intel/search")
+async def search_iocs_public(
+    q: str,
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search IOCs by value or type -- public endpoint for node queries.
+
+    No authentication required so remote nodes can query the hub.
+    """
+    result = await db.execute(
+        select(ThreatIntel).where(
+            or_(
+                ThreatIntel.ioc_value.contains(q),
+                ThreatIntel.ioc_type.contains(q),
+                ThreatIntel.threat_type.contains(q),
+            )
+        ).limit(50)
+    )
+    iocs = result.scalars().all()
+
+    return [
+        IOCOut(
+            id=ioc.id,
+            ioc_type=ioc.ioc_type,
+            ioc_value=ioc.ioc_value,
+            threat_type=ioc.threat_type,
+            confidence=ioc.confidence,
+            source=ioc.source,
+            tags=ioc.tags or [],
+            first_seen=ioc.first_seen.isoformat() if ioc.first_seen else None,
+            last_seen=ioc.last_seen.isoformat() if ioc.last_seen else None,
+        )
+        for ioc in iocs
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Hub info endpoint (public -- nodes discover capabilities)
+# ---------------------------------------------------------------------------
+
+@router.get("/hub/info")
+async def hub_info():
+    """
+    Public hub info endpoint. Returns capabilities and connection details
+    so remote AEGIS nodes can auto-configure.
+    """
+    from app.config import settings as cfg
+
+    hub_stats = threat_intel_hub.get_stats() if mongo_connected() else {}
+
+    return {
+        "hub": "sentinelsoc-threat-sharing",
+        "version": "1.7.33",
+        "api_url": "http://localhost:8001",
+        "ws_url": "ws://localhost:8001/ws",
+        "endpoints": {
+            "feed": "/api/v1/threats/feed",
+            "share": "/api/v1/threats/intel/share",
+            "search": "/api/v1/threats/intel/search",
+            "register": "/api/v1/threats/nodes/register",
+            "nodes": "/api/v1/threats/nodes",
+        },
+        "mongo_connected": mongo_connected(),
+        "instance_id": hub_stats.get("instance_id", "unknown"),
+        "iocs_shared": hub_stats.get("iocs_shared", 0),
+        "iocs_pulled": hub_stats.get("iocs_pulled", 0),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sharing node registration (separate from EDR node enrollment)
+# ---------------------------------------------------------------------------
+
+# In-memory registry of sharing nodes (lightweight -- no DB required)
+_sharing_nodes: dict[str, dict] = {}
+
+
+class SharingNodeRegister(BaseModel):
+    node_id: str = Field(..., min_length=1, max_length=128, description="Unique node identifier")
+    node_name: str = Field("", max_length=128, description="Human-readable name")
+    node_url: str = Field("", max_length=512, description="Node's own API URL (for bidirectional sharing)")
+    version: str = Field("1.0.0", max_length=32, description="AEGIS version running on the node")
+
+
+@router.post("/nodes/register")
+@limiter.limit("20/minute")
+async def register_sharing_node(request: Request, body: SharingNodeRegister):
+    """
+    Register a remote AEGIS node for threat sharing.
+
+    No authentication required -- any AEGIS instance can register.
+    """
+    if body.node_id not in _sharing_nodes and len(_sharing_nodes) >= _MAX_SHARING_NODES:
+        # Unauthenticated: keep the registry bounded by dropping the entry
+        # that has been silent the longest.
+        stale = min(_sharing_nodes, key=lambda k: _sharing_nodes[k].get("last_seen", ""))
+        _sharing_nodes.pop(stale, None)
+    _sharing_nodes[body.node_id] = {
+        "node_id": body.node_id,
+        "node_name": body.node_name or body.node_id,
+        "node_url": body.node_url,
+        "version": body.version,
+        "registered_at": datetime.utcnow().isoformat(),
+        "last_seen": datetime.utcnow().isoformat(),
+        "iocs_submitted": 0,
+    }
+
+    # Broadcast registration event
+    try:
+        await event_bus.publish("node_status", {
+            "_event_type": "node_status",
+            "action": "sharing_node_registered",
+            "node_id": body.node_id,
+            "node_name": body.node_name,
+        })
+    except Exception:
+        pass
+
+    return {
+        "status": "registered",
+        "node_id": body.node_id,
+        "hub_url": "http://localhost:8001",
+        "ws_url": "ws://localhost:8001/ws",
+        "message": f"Node registered for threat sharing.",
+    }
+
+
+@router.get("/nodes")
+async def list_sharing_nodes(auth: AuthContext = Depends(require_viewer)):
+    """List all registered sharing nodes. Signed-in users only: the registry
+    holds other installs' identifiers and URLs."""
+    return {
+        "nodes": list(_sharing_nodes.values()),
+        "count": len(_sharing_nodes),
+    }
+
+
+@router.get("/sharing/stats")
+async def get_sharing_stats(auth: AuthContext = Depends(require_viewer)):
+    """Get threat sharing statistics (hub sync + auto-sharer)."""
+    from app.services.hub_sync_client import hub_sync_client
+    from app.services.auto_sharer import auto_sharer
+
+    return {
+        "hub_sync": hub_sync_client.stats,
+        "auto_sharer": auto_sharer.stats,
+        "nodes_registered": len(_sharing_nodes),
+    }
+
+
+# --- TTP Sequence Clustering (v1.7) ---
+
+@router.get("/campaigns")
+async def list_ttp_campaigns(
+    limit: int = 20,
+    window_hours: int = 168,
+    min_distinct_ips: int = 3,
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """List active TTP campaigns (clusters of incidents sharing a MITRE
+    (tactic, technique) fingerprint across distinct source IPs).
+
+    A campaign is surfaced when ≥ min_distinct_ips different source IPs
+    triggered incidents with the same TTP fingerprint inside the window.
+
+    v1.7.1: default window widened 24h -> 168h (7d) and the hard 14-day cap
+    raised to 30 days so historical multi-IP campaigns (e.g. the June AWS
+    SQLi cluster) are not silently hidden. If the requested window yields no
+    campaigns, we automatically widen the search (7d -> 14d -> 30d) before
+    giving up, mirroring the ?window=all fallback used by live-metrics /
+    threat-map. [FP-*] crawler incidents are excluded from clustering inside
+    detect_campaigns so they can never form fake campaigns.
+    """
+    from app.services.ttp_clustering import detect_campaigns
+    # Raise the cap from 14 days to 30 days so operators can query the full
+    # month of history the dashboard already exposes elsewhere.
+    bounded_window = max(1, min(window_hours, 24 * 30))
+    bounded_min_ips = max(2, min(min_distinct_ips, 50))
+    bounded_limit = max(1, min(limit, 100))
+
+    async def _detect(win: int, cid):
+        return await detect_campaigns(
+            db=db,
+            window_hours=win,
+            min_distinct_ips=bounded_min_ips,
+            client_id=cid,
+            limit=bounded_limit,
+        )
+
+    effective_window = bounded_window
+    campaigns = await _detect(bounded_window, auth.client.id)
+
+    # BUG-5 fix: log_watcher historically wrote incidents under whichever
+    # client `SELECT ... LIMIT 1` returned first (no ORDER BY), which can
+    # differ from the API-key-resolved client. If the per-tenant query
+    # surfaces nothing, retry tenant-agnostically so the UI is not empty
+    # while the legacy incidents drain. The deterministic log_watcher
+    # client lookup (same commit) prevents new mismatches.
+    if not campaigns:
+        campaigns = await _detect(bounded_window, None)
+
+    # Smart historical fallback: if the requested window is short and returned
+    # nothing, progressively widen (up to 30d) so slow-burn campaigns whose
+    # last_seen is weeks old still surface instead of an empty list.
+    if not campaigns:
+        for wider in (24 * 7, 24 * 14, 24 * 30):
+            if wider <= bounded_window:
+                continue
+            campaigns = await _detect(wider, auth.client.id)
+            if not campaigns:
+                campaigns = await _detect(wider, None)
+            if campaigns:
+                effective_window = wider
+                break
+
+    return {
+        "campaigns": campaigns,
+        "count": len(campaigns),
+        "window_hours": window_hours,
+        "effective_window_hours": effective_window,
+        "min_distinct_ips": min_distinct_ips,
+    }
+
+
+@router.get("/campaigns/{cluster_id}")
+async def get_campaign_detail_endpoint(
+    cluster_id: str,
+    window_hours: int = Query(168, ge=1, le=24 * 30),
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Drill-down view for a single TTP cluster.
+
+    Returns the full member-incident list, distinct attacker IPs with a brief
+    IP-intel enrichment (country, ASN, classification, blocked-status), MITRE
+    technique expansion, severity distribution, active flag, and a
+    plain-language recommended action. Backwards-compatible with the
+    listing endpoint: the listing's `cluster_id` is the path param here.
+    """
+    from app.services.ttp_clustering import get_campaign_detail
+    detail = await get_campaign_detail(
+        db=db,
+        cluster_id=cluster_id,
+        window_hours=max(1, min(window_hours, 24 * 30)),
+        client_id=auth.client.id,
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No campaign with cluster_id={cluster_id} in the last {window_hours}h",
+        )
+    return detail
+
+
+@router.post("/campaigns/{cluster_id}/investigated")
+async def mark_campaign_investigated_endpoint(
+    cluster_id: str,
+    auth: AuthContext = Depends(require_analyst),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a campaign as investigated. Stored on the client's settings JSON."""
+    from app.services.ttp_clustering import mark_campaign_investigated
+    result = await mark_campaign_investigated(
+        db=db,
+        cluster_id=cluster_id,
+        client_id=auth.client.id,
+        user_id=getattr(auth, "user_id", None),
+        user_email=getattr(auth, "user_email", None),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "failed"))
+    return result
+
+
+class ThreatEventOut(BaseModel):
+    id: str
+    rule_id: str
+    rule_name: str
+    host: str
+    severity: str
+    triggered_at: Optional[str]
+    process: Optional[str] = None
+    details: Optional[str] = None
+
+
+@router.get("/events", response_model=list[ThreatEventOut])
+async def list_threat_events(
+    type: Optional[str] = Query(None, description="Filter by event type (e.g. 'ransomware')"),
+    limit: int = Query(50, ge=1, le=200),
+    auth: AuthContext = Depends(require_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return recent threat events, optionally filtered by type.
+
+    Polymorphic-friendly: returns a plain array so the frontend can handle it
+    as either a direct array, json.events, or json.items — it tries all three.
+
+    type=ransomware: filters incidents matching T1486*, source='node-agent-ransomware',
+    or titles containing 'ransom'/'encrypt'.
+    """
+    q = select(Incident).where(Incident.client_id == auth.client_id)
+
+    if type and type.lower() == "ransomware":
+        q = q.where(
+            or_(
+                Incident.mitre_technique.like("T1486%"),
+                Incident.source == "node-agent-ransomware",
+                Incident.title.ilike("%ransom%"),
+                Incident.title.ilike("%encrypt%"),
+            )
+        )
+
+    q = q.order_by(Incident.detected_at.desc()).limit(limit)
+    rows = (await db.execute(q)).scalars().all()
+
+    result = []
+    for inc in rows:
+        process_name: Optional[str] = None
+        if inc.raw_alert and isinstance(inc.raw_alert, dict):
+            process_info = inc.raw_alert.get("process", {})
+            if isinstance(process_info, dict):
+                process_name = process_info.get("name")
+
+        result.append(
+            ThreatEventOut(
+                id=inc.id,
+                rule_id=inc.mitre_technique or inc.source or "unknown",
+                rule_name=inc.title,
+                host=inc.source_ip or "",
+                severity=inc.severity,
+                triggered_at=inc.detected_at.isoformat() if inc.detected_at else None,
+                process=process_name,
+                details=inc.description,
+            )
+        )
+
+    return result

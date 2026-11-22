@@ -1,0 +1,26 @@
+id: sigma_exfil_clipboard
+name: Clipboard Data Access
+kind: sigma
+severity: medium
+enabled: false
+tactics:
+- Exfiltration
+techniques:
+- T1115
+data_sources:
+- edr
+condition:
+  event_type: clipboard_access
+  count_threshold: 10
+  time_window_seconds: 60
+  group_by: process_name
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `clipboard_access` events, grouped by
+  process. No agent reports clipboard access. To revive it, add a
+  clipboard-access sensor to the agent and map it in edr_events, then set
+  `enabled: true`.
+
+  Process accessing clipboard data for potential exfiltration.

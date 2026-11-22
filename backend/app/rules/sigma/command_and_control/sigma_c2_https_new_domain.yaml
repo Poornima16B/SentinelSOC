@@ -1,0 +1,28 @@
+id: sigma_c2_https_new_domain
+name: HTTPS C2 to Newly Registered Domain
+kind: sigma
+severity: high
+enabled: false
+tactics:
+- CommandAndControl
+techniques:
+- T1071.001
+data_sources:
+- network
+condition:
+  event_type: connection
+  filter:
+    domain_age_days_lt: 30
+    protocol: tls
+    direction: outbound
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NOT FEEDABLE without an external source): needs `domain_age_days`
+  (domain intelligence such as WHOIS/passive DNS) and the TLS server name;
+  endpoint agents report the remote IP and port only. The engine also has no
+  `_lt` operator. To revive it, add a domain-intel enrichment step for TLS
+  connections and a `_lt` operator, then set `enabled: true`.
+
+  HTTPS connection to recently registered or low-reputation domain.

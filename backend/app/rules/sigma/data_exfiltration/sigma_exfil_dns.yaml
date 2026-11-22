@@ -1,0 +1,34 @@
+id: sigma_exfil_dns
+name: DNS Data Exfiltration
+kind: sigma
+severity: high
+enabled: false
+tactics:
+- Exfiltration
+techniques:
+- T1048.003
+data_sources:
+- dns
+condition:
+  event_type: dns_query
+  count_threshold: 50
+  time_window_seconds: 60
+  group_by: source_ip
+  filter:
+    query_length_gt: 50
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (unfeedable in this deployment): no AEGIS producer emits `dns_query`
+  events (dns_monitor only tails Linux resolver logs that do not exist on the
+  macOS host, and emits nothing). This rule sits on event type `dns_query`, so
+  it can never receive an event and would only inflate the advertised rule
+  count. To revive it, add a DNS query log feed (e.g. Pi-hole/dnsmasq/Unbound
+  logs) normalised into `dns_query` events, then set `enabled: true`.
+  Endpoint side: node-tauri defines a dns_query event kind but no sensor emits
+  it (its ETW session subscribes to no DNS provider) and edr_events does not
+  map it. To revive it, add a DNS-Client ETW subscription to the agent and map
+  dns_query in edr_events.
+
+  Large or encoded DNS queries suggesting data exfiltration via DNS.

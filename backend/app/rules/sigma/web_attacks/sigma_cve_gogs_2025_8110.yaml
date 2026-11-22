@@ -1,0 +1,29 @@
+id: sigma_cve_gogs_2025_8110
+name: Gogs Exploitation Attempt (CVE-2025-8110)
+kind: sigma
+severity: high
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- http_logs
+condition:
+  event_type: http_request
+  filter:
+    path_contains:
+    - /api/repos
+  count_threshold: 10
+  time_window_seconds: 300
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'Detects attempted exploitation of CVE-2025-8110 in Gogs (CVSS 8.7). Rate-based
+  rather than single-shot: /api/repos has no hits in this estate''s traffic today, but it
+  is a plausible route for any git-adjacent application, and a single-shot rule on a plausible
+  path is the shape that produced 313 false criticals from /api/jobs in a replay of real traffic.
+  Ten requests in five minutes from one source is automated probing; one is somebody''s application.'
+references:
+- https://www.sentinelone.com/vulnerability-database/cve-2025-8110/

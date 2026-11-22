@@ -1,0 +1,26 @@
+id: sigma_evasion_rootkit
+name: Rootkit Behavior Detected
+kind: sigma
+severity: critical
+enabled: false
+tactics:
+- DefenseEvasion
+techniques:
+- T1014
+data_sources:
+- edr
+condition:
+  event_type: kernel_module_load
+  filter:
+    signed: false
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `kernel_module_load` events. No agent
+  reports module or driver loads (node-tauri's eBPF probes cover exec, connect, open and unlink;
+  its ETW session subscribes to no driver-load provider). To revive it, add a module-load sensor
+  (auditd/eBPF finit_module, ETW driver-load) and map it in edr_events, then
+  set `enabled: true`.
+
+  Kernel module loading or syscall hooking detected.

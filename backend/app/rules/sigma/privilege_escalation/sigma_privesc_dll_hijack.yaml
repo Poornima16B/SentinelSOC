@@ -1,0 +1,28 @@
+id: sigma_privesc_dll_hijack
+name: DLL Hijacking Attempt
+kind: sigma
+severity: high
+enabled: true
+tactics:
+- PrivilegeEscalation
+techniques:
+- T1574.001
+data_sources:
+- edr
+condition:
+  event_type: dll_load
+  filter:
+    path_contains:
+    - \Temp\
+    - \Downloads\
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  Endpoint rule. Fed by image_load events (node-tauri ETW sensor on Windows, a
+  non-default build feature); the path is the loaded image. AppData was
+  dropped from the filter: browsers, Electron apps and updaters load DLLs from
+  it constantly. Installers extracting to Temp will still match, so treat this
+  as a hunting signal.
+
+  DLL loaded from unexpected path suggesting DLL hijacking.

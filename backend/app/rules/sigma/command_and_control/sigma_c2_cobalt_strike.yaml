@@ -1,0 +1,34 @@
+id: sigma_c2_cobalt_strike
+name: Cobalt Strike C2 Pattern
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- CommandAndControl
+techniques:
+- T1071.001
+data_sources:
+- pm2
+- web_log
+condition:
+  event_type: web_request
+  count_threshold: 5
+  time_window_seconds: 300
+  group_by: source_ip
+  filter:
+    path_contains:
+    - /dpixel
+    - /__utm.gif
+    - /pixel.gif
+    - /g.pixel
+    - /updates.rss
+    - /j.ad
+    - /ptj
+    - /en_us/all.js
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'HTTP traffic matching default Cobalt Strike malleable C2 profile URIs (/dpixel, /__utm.gif,
+  /pixel.gif, /updates.rss, ...). The bare /pixel, /updates, /submit.php and /__session were removed:
+  they are ordinary tracking-pixel, update-feed, form and session routes of unrelated apps and matched
+  them on rhythm alone.'

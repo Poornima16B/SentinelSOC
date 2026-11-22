@@ -1,0 +1,19 @@
+id: sigma_c2_lolbin
+name: LOLBin Abuse for C2
+kind: sigma
+severity: high
+enabled: true
+tactics:
+- CommandAndControl
+techniques:
+- T1218
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    cmdline_regex: (?i)(\bcertutil(\.exe)?\s.*(-urlcache|-decode|-f\s+https?:)|\bbitsadmin(\.exe)?\s.*/transfer|\bmshta(\.exe)?\s+\S*(https?:|vbscript:|javascript:)|\bregsvr32(\.exe)?\s.*(/i:\s*https?:|scrobj\.dll)|\brundll32(\.exe)?\s.*(javascript:|mshtml,|\\temp\\|\\appdata\\))
+entityMappings:
+- type: IP
+  field: source_ip
+description: Legitimate binary abused for downloading or executing C2 payload.

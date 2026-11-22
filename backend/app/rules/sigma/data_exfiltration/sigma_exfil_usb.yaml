@@ -1,0 +1,25 @@
+id: sigma_exfil_usb
+name: USB Storage Device Mounted
+kind: sigma
+severity: medium
+enabled: false
+tactics:
+- Exfiltration
+techniques:
+- T1052.001
+data_sources:
+- endpoint
+condition:
+  event_type: device_connect
+  filter:
+    device_type: usb_storage
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `device_connect` events with
+  `device_type: usb_storage`. No agent reports removable-device attach. To
+  revive it, add a device-arrival sensor (WM_DEVICECHANGE / udev) to the agent
+  and map it in edr_events, then set `enabled: true`.
+
+  USB mass storage device connected and mounted.

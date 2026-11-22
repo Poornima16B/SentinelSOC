@@ -1,0 +1,1641 @@
+﻿python : 2026-11-22 10:50:44 [aegis-agent] INFO: ============================================================
+At line:4 char:1
++ python aegis_agent.py 2>&1 | Out-File "C:\Users\poorn\Downloads\Senti ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-11-22 10:5...===============:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-11-22 10:50:44 [aegis-agent] INFO: AEGIS EDR-lite Agent v1.0.0
+2026-11-22 10:50:44 [aegis-agent] INFO: Agent ID : 5d0b581f-d879-4411-9134-c025c5c86d5d
+2026-11-22 10:50:44 [aegis-agent] INFO: Hostname : DESKTOP-JA5F4QC
+2026-11-22 10:50:44 [aegis-agent] INFO: OS       : Windows 10 (AMD64)
+2026-11-22 10:50:44 [aegis-agent] INFO: Mode     : HTTP (standalone)
+2026-11-22 10:50:44 [aegis-agent] INFO: API URL  : http://localhost:8001/api/v1
+2026-11-22 10:50:44 [aegis-agent] INFO: ============================================================
+2026-11-22 10:50:44 [aegis-agent] INFO: Collecting system information...
+2026-11-22 10:50:52 [aegis-agent] INFO: System info: Windows 10, 4 CPUs, 8103 MB RAM
+2026-11-22 10:50:52 [aegis-agent] INFO: Running initial network discovery...
+2026-11-22 10:50:53 [aegis-agent] INFO: Local subnets: ['192.168.1.0/24', '172.28.16.0/20']
+2026-11-22 10:50:53 [aegis-agent] INFO: Ping sweeping 192.168.1.0/24 ...
+2026-11-22 10:50:57 [aegis-agent] INFO: Subnet 172.28.16.0/20 too large for ping sweep, using ARP table only
+2026-11-22 10:50:57 [aegis-agent] INFO: ARP table: 17 hosts found
+2026-11-22 10:50:57 [aegis-agent] INFO: Scanning 3 discovered hosts for services...
+2026-11-22 10:51:03 [aegis-agent] INFO: Discovery complete: 3 services found on 3 hosts
+2026-11-22 10:51:03 [aegis-agent] INFO: Initial discovery found 3 services
+2026-11-22 10:51:06 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/register "HTTP/1.1 200 
+OK"
+2026-11-22 10:51:06 [aegis-agent] INFO: Registered: Agent DESKTOP-JA5F4QC re-registered successfully 
+(status=re-registered)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\WINDOWS\System32\drivers\etc (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\WINDOWS\System32\config (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\WINDOWS\System32\WindowsPowerShell\v1.0 (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\Users\poorn\.ssh (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\Users\poorn\Documents\WindowsPowerShell (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] INFO: FIM watching: C:\Users\poorn\AppData\Roaming\Microsoft\Windows\Start 
+Menu\Programs\Startup (recursive=True)
+2026-11-22 10:51:06 [aegis-agent] WARNING: FIM observer could not start: [WinError 5] Access is denied. — running 
+without FIM
+2026-11-22 10:51:06 [aegis-agent] INFO: Breadcrumb deployed: C:\Users\poorn\passwords.txt
+2026-11-22 10:51:06 [aegis-agent] INFO: Breadcrumb deployed: C:\Users\poorn\AppData\Roaming\.env.production
+2026-11-22 10:51:06 [aegis-agent] INFO: Breadcrumb deployed: C:\Users\poorn\.aws\credentials
+2026-11-22 10:51:06 [aegis-agent] INFO: Breadcrumb deployed: C:\Users\poorn\Documents\passwords.kdbx.bak
+2026-11-22 10:51:06 [aegis-agent] INFO: Breadcrumb observer started (4 files)
+2026-11-22 10:51:06 [aegis-agent] INFO: All monitors started. Waiting for shutdown signal...
+2026-11-22 10:51:06 [aegis-agent] INFO: Process monitor started (interval=10s)
+2026-11-22 10:51:06 [aegis-agent] INFO: Network monitor started (interval=10s)
+2026-11-22 10:51:06 [aegis-agent] INFO: Network discovery started (interval=21600s, ports=[22, 80, 443, 3306, 5432, 
+6379, 8080, 8443, 9200, 27017, 5900, 3389])
+2026-11-22 10:51:06 [aegis-agent] INFO: Running network discovery scan...
+2026-11-22 10:51:06 [aegis-agent] WARNING: pywin32 not installed -- Windows Event Log monitoring disabled.
+2026-11-22 10:51:06 [aegis-agent] WARNING: Install with: pip install pywin32
+2026-11-22 10:51:07 [aegis-agent] INFO: Local subnets: ['192.168.1.0/24', '172.28.16.0/20']
+2026-11-22 10:51:07 [aegis-agent] INFO: Ping sweeping 192.168.1.0/24 ...
+2026-11-22 10:51:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:51:11 [aegis-agent] INFO: Subnet 172.28.16.0/20 too large for ping sweep, using ARP table only
+2026-11-22 10:51:11 [aegis-agent] INFO: ARP table: 17 hosts found
+2026-11-22 10:51:11 [aegis-agent] INFO: Scanning 3 discovered hosts for services...
+2026-11-22 10:51:16 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:51:18 [aegis-agent] INFO: Discovery complete: 3 services found on 3 hosts
+2026-11-22 10:51:18 [aegis-agent] INFO: Discovery reported 3 services to API
+2026-11-22 10:51:22 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:51:27 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:51:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:51:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:51:47 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:51:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:52:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:17 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:27 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:52:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:47 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:52:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:53:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:53:18 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:53:28 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:53:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:53:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:53:48 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:54:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:54:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:54:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:54:48 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:55:07 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:55:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:55:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:56:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:56:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:57:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:57:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:57:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:57:48 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:58:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:58:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:58:59 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 10:59:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 10:59:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:00:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:00:19 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:00:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:01:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:01:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:01:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:02:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:02:29 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:02:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:02:50 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:03:00 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:03:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:03:10 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:03:20 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:03:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:04:09 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:04:10 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:04:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:04:31 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:04:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:05:01 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:05:09 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:05:11 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:05:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:05:31 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:05:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:05:51 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:06:01 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:06:10 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:06:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:06:32 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:06:40 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:06:42 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:06:52 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:07:02 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:07:10 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:07:22 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:07:40 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:07:42 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:08:10 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:08:12 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:08:40 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:08:42 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:09:03 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:09:13 [aegis-agent] WARNING: Heartbeat error: All connection attempts failed
+2026-11-22 11:09:15 [aegis-agent] WARNING: Event flush error: All connection attempts failed
+2026-11-22 11:09:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:43 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:09:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:09:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:13 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:10:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:10:38 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:10:43 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:10:43 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:10:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:11:13 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:11:43 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:11:44 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:11:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:12:14 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:12:14 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:12:59 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:13:09 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:13:29 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:13:44 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:13:49 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:14:09 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:14:29 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:14:29 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:14:49 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:15:09 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:15:14 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:15:29 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:15:49 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:15:59 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:16:09 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:16:30 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:16:44 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:16:50 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:17:10 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:17:29 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:17:30 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:17:50 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:18:10 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:18:14 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:18:30 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:18:46 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:18:48 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:19:18 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:19:46 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:19:48 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:20:16 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:20:19 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:20:37 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:20:49 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:20:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:21:02 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:21:13 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:21:19 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:21:33 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:21:43 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:21:49 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:21:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:22:04 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:22:14 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:22:19 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:22:24 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:22:44 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:22:49 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:22:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:05 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:18 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:23:28 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:33 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:45 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:23:52 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:24:22 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:24:26 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:24:46 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:24:52 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:25:22 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:25:36 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:25:52 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:26:16 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:26:22 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:26:27 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:26:53 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:26:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:27:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:27:18 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:27:23 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:27:29 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:27:35 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:27:53 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:27:55 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:28:05 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:28:24 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:28:26 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:28:36 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:28:47 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:28:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:29:08 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:29:18 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:29:24 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:29:28 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:29:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:29:49 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:29:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:29:59 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:30:09 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:30:20 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:30:24 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:30:40 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:30:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:31:11 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:17 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:23 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:25 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:31:29 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:39 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:50 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:31:55 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:32:00 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:32:20 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:32:25 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:32:40 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:32:46 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:32:51 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:32:56 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:33:01 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:33:11 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:33:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:33:26 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:33:44 [aegis-agent] WARNING: Event flush error: All connection attempts failed
+2026-11-22 11:33:51 [aegis-agent] WARNING: Event flush error: All connection attempts failed
+2026-11-22 11:33:56 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:33:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:26 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:34:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:34:56 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:35:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:26 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:35:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:35:56 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:36:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:27 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:36:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:36:49 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:36:54 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:36:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:37:05 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:16 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:21 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:27 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:37:31 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:41 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:51 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:37:57 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:38:04 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:14 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:24 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:28 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:38:34 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:44 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:55 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:38:58 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:39:05 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:39:15 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:39:25 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:39:28 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/heartbeat "HTTP/1.1 200 
+OK"
+2026-11-22 11:39:35 [aegis-agent] INFO: HTTP Request: POST http://localhost:8001/api/v1/agents/events "HTTP/1.1 200 OK"
+2026-11-22 11:40:00 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:40:13 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:40:20 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:40:40 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:40:58 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:41:00 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:41:20 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:41:40 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:41:43 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:42:00 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:42:20 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:42:28 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:42:40 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:43:00 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:43:13 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:43:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:43:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:43:58 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:44:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:44:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:44:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:44:43 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:45:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:45:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:45:28 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:45:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:46:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:46:13 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:46:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:46:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:46:58 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:47:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:47:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:47:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:47:44 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:48:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:48:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:48:29 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:48:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:49:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:49:14 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:49:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:49:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:49:59 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:50:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:50:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:50:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:50:44 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:51:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:51:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:51:29 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:51:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:52:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:52:14 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:52:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:52:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:52:59 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:53:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:53:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:53:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:53:44 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:53:59 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:54:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 11:54:29 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:54:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:54:59 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:55:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:29 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:55:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:55:59 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:56:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:29 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:56:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:56:59 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:57:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:30 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:57:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:57:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:00 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:58:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:30 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:58:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:58:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:15 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 11:59:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:45 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 11:59:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 11:59:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:30 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:00:30 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:00:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:00:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:00 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:01:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:30 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:01:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:01:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:00 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:02:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:30 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:02:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:02:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:00 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:03:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:18 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:03:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:28 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:03:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:30 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:03:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:43 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:03:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:03:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:00 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:04:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:04:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:49 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:04:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:04:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:01 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:05:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:05:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:05:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:05:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:06:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:30 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:06:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:06:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:06:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:01 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:07:01 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:07:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:07:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:07:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:08:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:08:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:08:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:09:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:09:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:37 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:09:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:52 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:09:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:09:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:10:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:17 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:10:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:10:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:37 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:10:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:10:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:10:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:11:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:11:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:11:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:12:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:23 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:12:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:12:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:12:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:13:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:13:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:13:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:14:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:14:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:14:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:15:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:31 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:15:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:15:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:49 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:15:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:15:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:01 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:16:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:31 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:16:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:16:55 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:16:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:17:05 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:17:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:17:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:32 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:17:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:17:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:17:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:18:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:32 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:18:35 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:18:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:18:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:19:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:19:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:19:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:20:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:20:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:20:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:20:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:21:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:21:36 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:21:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:21:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:22:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:22:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:22:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:22:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:22:57 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:23:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:23:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:23:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:23:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:24:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:24:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:53 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:24:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:24:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:25:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:25:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:25:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:26:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:26:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:26:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:27:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:27:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:27:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:28:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:28:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:28:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:29:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:29:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:29:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:02 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:30:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:32 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:30:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:30:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:31:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:31:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:31:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:32:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:32:33 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:38 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:43 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:32:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:33:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:33:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:33:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:33:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:34:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:34:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:34:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:35:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:35:35 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:35:40 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:45 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:35:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:36:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:36:41 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:36:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:36:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:37:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:37:36 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:37:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:46 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:51 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:37:56 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:38:06 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:21 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:38:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:38:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:38:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:39:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:39:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:39:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:39:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:40:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:33 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:40:48 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:40:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:40:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:03 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:41:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:28 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:48 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:41:48 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:41:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:41:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:03 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:08 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:13 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:18 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:18 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:42:23 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:39 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:44 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:49 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:42:49 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:54 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:42:59 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:04 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:19 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:43:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:29 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:34 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:43:55 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:44:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:04 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:44:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:10 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:15 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:25 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:44:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:34 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:44:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:44:55 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:45:15 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:45:19 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:45:35 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:45:55 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:46:00 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:46:04 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:46:20 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:46:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:46:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:46:34 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:46:35 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:46:55 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:47:15 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:47:19 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:47:35 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:47:55 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:48:04 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:48:15 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:48:20 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:48:25 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:48:30 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:48:30 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:48:34 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:48:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:48:56 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:49:16 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:49:19 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:49:36 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:49:56 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:50:04 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:50:16 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:50:36 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:50:49 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:50:56 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:51:01 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:51:21 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:51:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:51:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:51:34 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:51:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:52:11 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:52:16 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:52:19 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:52:21 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:52:26 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:52:31 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:52:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:53:04 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:53:11 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:53:31 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:53:35 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:53:36 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:53:41 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:53:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:53:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:53:57 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:02 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:05 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:54:07 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:12 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:27 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:32 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:35 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:54:37 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:42 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:47 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 12:54:47 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:54:52 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:55:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:55:17 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:55:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:55:22 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:55:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:56:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:56:05 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:56:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:56:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:56:50 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:57:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:57:22 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:57:35 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:57:42 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:58:02 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:58:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:58:23 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:58:43 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:59:03 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:59:05 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 12:59:23 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:59:35 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 12:59:43 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 12:59:48 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:59:53 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 12:59:58 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:00:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:00:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:00:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:00:58 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:01:05 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:01:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:01:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:01:50 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:01:58 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:02:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:02:35 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:02:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:02:58 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:03:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:03:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:03:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:03:50 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:03:58 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:04:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:04:35 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:04:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:04:58 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:05:18 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:05:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:05:38 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:05:59 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:06:05 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:06:19 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:06:39 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:06:50 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:06:59 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:07:19 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:07:35 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:07:39 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:07:59 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:08:19 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:08:20 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:08:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:08:44 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:08:50 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:09:04 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:09:09 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:09:14 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 13:09:14 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:09:19 [aegis-agent] ERROR: Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Python314\Lib\asyncio\events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-11-22 13:09:19 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:09:20 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:09:39 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:09:59 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:10:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:10:19 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:10:24 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:10:36 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:10:44 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:11:04 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:11:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:11:24 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:11:44 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:12:04 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:12:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:12:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:12:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:12:51 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:13:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:13:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:13:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:13:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:14:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:14:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:14:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:14:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:15:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:15:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:15:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:15:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:15:51 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:16:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:16:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:16:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:16:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:17:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:17:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:17:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:17:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:17:50 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:17:51 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:17:55 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:18:00 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:18:05 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:18:25 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:18:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:18:45 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:19:05 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:19:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:19:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:19:46 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:20:06 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:20:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:20:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:20:46 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:20:51 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:21:06 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:21:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:21:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:21:46 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:22:06 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:22:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:22:26 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:22:46 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:22:51 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:23:06 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:23:11 [aegis-agent] WARNING: Event flush error: Server disconnected without sending a response.
+2026-11-22 13:23:31 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:23:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:23:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:24:11 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:24:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:24:31 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:24:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:25:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:25:11 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:25:31 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:25:51 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:25:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:26:11 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:26:31 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:26:36 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:26:51 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:27:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:27:21 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:27:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:27:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:28:06 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:28:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:28:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:28:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:28:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:29:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:29:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:29:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:29:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:30:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:30:22 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:30:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:30:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:31:07 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:31:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:31:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:31:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:31:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:32:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:32:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:32:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:32:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:33:07 [aegis-agent] WARNING: Heartbeat error: Server disconnected without sending a response.
+2026-11-22 13:33:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:33:32 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:33:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:33:52 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:34:12 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:34:33 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:34:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:34:53 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:35:13 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:35:22 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:35:33 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:35:53 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:36:07 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:36:13 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:36:33 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:36:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:36:53 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:37:13 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:37:33 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:37:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:37:53 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:38:13 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:38:22 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:38:33 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:38:53 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:39:07 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:39:13 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:39:34 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:39:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:39:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:40:14 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:40:34 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:40:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:40:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:41:14 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:41:22 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:41:34 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:41:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:42:07 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:42:14 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:42:34 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:42:52 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:42:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:43:14 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:43:34 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:43:37 [aegis-agent] WARNING: Heartbeat error: 
+2026-11-22 13:43:54 [aegis-agent] WARNING: Event flush error: 
+2026-11-22 13:44:15 [aegis-agent] WARNING: Event flush error: 

@@ -1,0 +1,247 @@
+from pydantic import model_validator
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    @model_validator(mode="before")
+    @classmethod
+    def map_sentinelsoc_aliases(cls, data: dict):
+        if isinstance(data, dict):
+            for key, val in list(data.items()):
+                if key.startswith("SENTINELSOC_"):
+                    aegis_key = "AEGIS_" + key[len("SENTINELSOC_"):]
+                    if aegis_key not in data:
+                        data[aegis_key] = val
+        return data
+
+    # Core
+    AEGIS_ENV: str = "production"
+    AEGIS_SECRET_KEY: str = "aegis-dev-secret-key-change-in-production"
+    # Read from .env via pydantic (os.environ does NOT carry .env values);
+    # the boot guard and admin seed both read this field, not os.environ.
+    AEGIS_ADMIN_PASSWORD: str = "changeme-on-first-login"
+    # Self-serve signup creates an organisation AND an admin user, and admin
+    # actions reach host-level state (firewall, safelist, EDR response). It is
+    # therefore closed once the install has its first real organisation. Set to
+    # true only for a deliberately multi-tenant deployment behind its own
+    # access control.
+    AEGIS_ALLOW_SIGNUP: bool = False
+    # Node-facing routes (/nodes/heartbeat, /events, /report-assets). Agents
+    # built before the per-node token was sent on these routes present no
+    # credential, so the default stays compatible. Once every agent is on a
+    # build that sends X-AEGIS-Node-Token here, set this to true: a node that
+    # holds a token must then present it.
+    AEGIS_NODE_REQUIRE_TOKEN: bool = False
+    # Threat-sharing hub. /threats/intel/share is public by design so any AEGIS
+    # node can contribute, which also means anyone can submit. Submissions that
+    # do not carry this key (header X-AEGIS-Hub-Key) are accepted at a capped
+    # confidence, below the level at which subscribers auto-block. Set the same
+    # value on the hub and on every node you trust.
+    AEGIS_HUB_SHARED_KEY: str = ""
+    # Credential for an autonomous AI agent (sent as X-API-Key). A caller that
+    # authenticates with it is ALWAYS treated as origin "ai" when authoring
+    # rules, whatever the request body claims, and holds analyst rights
+    # elsewhere: it cannot promote a rule to blocking, edit the safelist or use
+    # admin routes. Give the agent this key instead of an admin API key.
+    AEGIS_AGENT_API_KEY: str = ""
+    # An address that only an endpoint agent reported (the remote peer of a
+    # connection it says it saw) is one machine's word. A compromised or
+    # malfunctioning node could otherwise get any external address blocked.
+    # Such blocks wait for operator approval unless this is set to true.
+    AEGIS_EDR_NETWORK_AUTOBLOCK: bool = False
+    AEGIS_HUB_UNTRUSTED_MAX_CONFIDENCE: float = 0.6
+    AEGIS_API_PORT: int = 8000
+
+    # OpenRouter
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # OmniRoute self-hosted gateway (optional). When set, it becomes the
+    # PRIMARY AI provider; the direct providers below remain as fallback.
+    AEGIS_OMNIROUTE_URL: str = ""
+
+    # Database (PostgreSQL only)
+    DATABASE_URL: str = "postgresql+asyncpg://cayde6:cayde6pass@localhost:5432/cayde6"
+
+    # Redis / Event bus
+    REDIS_URL: str = "redis://localhost:6379"
+    USE_MEMORY_BUS: bool = True
+    USE_REDIS_STREAMS: bool = False
+
+    # Scanning tools
+    NUCLEI_PATH: str = "/usr/bin/nuclei"
+    NMAP_PATH: str = "/usr/bin/nmap"
+    SUBFINDER_PATH: str = "/usr/bin/subfinder"
+    HTTPX_PATH: str = "/usr/bin/httpx"
+
+    # Notifications
+    WEBHOOK_URL: str = ""
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASS: str = ""
+
+    # JWT
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
+
+    # PayPal
+    PAYPAL_CLIENT_ID: str = ""
+    PAYPAL_SECRET: str = ""
+    PAYPAL_API_URL: str = "https://api-m.paypal.com"
+
+    # Inception Labs (Mercury-2 diffusion LLM)
+    INCEPTION_API_KEY: str = ""
+    INCEPTION_BASE_URL: str = "https://api.inceptionlabs.ai/v1"
+
+    # Google Gemini (Generative Language API) — cheap+fast, default model
+    # gemini-flash-lite-latest. Suitable for enrichment + triage on hot path.
+    GEMINI_API_KEY: str = ""
+    GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    GEMINI_DEFAULT_MODEL: str = "gemini-flash-lite-latest"
+
+    # Community Threat Intel Hub
+    AEGIS_MONGODB_URI: str = ""     # Direct MongoDB connection (for self-hosted hubs)
+    AEGIS_HUB_URL: str = ""         # HTTP hub URL (connect to another AEGIS instance)
+
+    # Log watcher — comma-separated list of PM2 app names to tail.
+    # Prevents AEGIS from monitoring unrelated projects on the same host
+    # (which produced self-referential SQLi false positives from other apps'
+    # traceback dividers). Empty string = tail all apps (legacy behavior).
+    AEGIS_MONITORED_APPS: str = "cayde6-api,cayde6-frontend"
+
+    # Extra log paths to tail in addition to PM2 stdout/stderr.
+    # Colon-separated, supports glob patterns. Used to point AEGIS at the
+    # unified aegis-feed.jsonl that web apps write to.
+    # Example: AEGIS_EXTRA_LOG_PATHS=/Users/example/web-logs/aegis-feed.jsonl
+    AEGIS_EXTRA_LOG_PATHS: str = ""
+
+    # Attacker allow-list — comma-separated IPs that bypass the internal-IP
+    # filter even if they would otherwise be classified as private/Tailscale.
+    # Use this for pentest lab machines that need to generate real incidents
+    # despite living in Tailscale CGNAT (100.64.0.0/10).
+    # Example: AEGIS_ATTACKER_IPS="203.0.113.10,203.0.113.11"
+    AEGIS_ATTACKER_IPS: str = ""
+
+    # Safe-IP allow-lists — comma-separated literal IPs and/or CIDR ranges that
+    # are NEVER blocked and NEVER turned into an incident, on every detection
+    # path. Both names are additive and feed the same gate
+    # (attack_detector._is_safe_ip); use whichever reads better for the entry.
+    #
+    # These MUST be declared here even though attack_detector reads them,
+    # because model_config sets extra="ignore" — an undeclared key present in
+    # .env is silently dropped by pydantic and never reaches settings, which
+    # would leave the operator's entire safelist inert.
+    AEGIS_SAFE_IPS: str = ""
+    AEGIS_INTERNAL_IPS: str = ""
+    # Shared consumer egress that is detected and alerted on but never
+    # auto-blocked (WARP / Private Relay ranges are built in; this extends them).
+    # Declared for the same extra="ignore" reason as the two above.
+    AEGIS_SHARED_EGRESS_IPS: str = ""
+    # Block permanence (app/services/block_policy.py). Declared for the same
+    # extra="ignore" reason: a value in backend/.env must reach the policy.
+    AEGIS_BLOCKS_PERMANENT: str = ""
+    AEGIS_BLOCK_ESCALATE_AFTER: str = ""
+    AEGIS_EDR_TRUSTED_PARENTS: str = ""
+    AEGIS_EDR_TRUSTED_INSTALLERS: str = ""
+    AEGIS_EDR_PROVISIONING_GRACE_MIN: str = ""
+
+    # External firewall API URL (e.g. AEGIS Firewall Agent on Raspberry Pi).
+    # When set, AEGIS uses this for real iptables blocking + threat intel.
+    AEGIS_FIREWALL_URL: str = ""
+    # Shared secret for the Mac Pro <-> Pi firewall channel (header
+    # X-AEGIS-FW-Auth). Declared here because backend/.env values only reach
+    # pydantic Settings, never os.environ (extra="ignore").
+    AEGIS_FIREWALL_SECRET: str = ""
+
+    # MikroTik switch health monitor (read-only REST). Entirely a no-op while
+    # AEGIS_SWITCH_URL is empty. Declared here because backend/.env values only
+    # reach pydantic Settings, never os.environ (extra="ignore").
+    AEGIS_SWITCH_URL: str = ""
+    AEGIS_SWITCH_USER: str = ""
+    AEGIS_SWITCH_PASSWORD: str = ""
+
+    # Opt-in incident reconciliation: when enabled, the firewall sync pass will
+    # auto-resolve incidents whose source_ip is no longer in the Pi blocklist.
+    # Set to True (or AEGIS_AUTO_RECONCILE_INCIDENTS=1 in .env) to activate.
+    # Default OFF to avoid surprising existing deployments.
+    AEGIS_AUTO_RECONCILE_INCIDENTS: bool = False
+
+    # Opt-in Pi → Mac Pro blocklist pull. When enabled, each firewall sync cycle
+    # appends any Pi-blocked IPs missing from the local blocked_ips.txt so the
+    # FastAPI 403 middleware enforces them too. Default OFF (push-only).
+    AEGIS_FIREWALL_PULL_FROM_PI: bool = False
+
+    # ----------------------------------------------------------------------
+    # DoS Shield (v1.6.4.0) — L7 flood detection / mitigation.
+    # SAFE DEFAULTS: MODE=monitor (detect+emit only, NEVER 429/block) and the
+    # network tier is gated off (NETSHIELD=False). Flipping to active or
+    # enabling netshield is an explicit human decision — see deploy_notes.
+    # ----------------------------------------------------------------------
+    # 'monitor' = detect + log + emit dos.* events, NEVER 429/block.
+    # 'active'   = enforce (429 + escalate). Runtime-overridable via /dos/mode.
+    AEGIS_DOS_MODE: str = "monitor"
+    # Network-tier master gate. False/0 = firewall_client network methods and
+    # /dos/netshield endpoints are no-ops. Guards against locking the Mac Pro
+    # out of its own Pi gateway. Must be explicitly enabled by an operator.
+    AEGIS_DOS_NETSHIELD: bool = False
+
+    # --- Per-IP sliding window ---
+    # Baseline peak legit IP = 2 req/s → 5x headroom. Above trips dos.http_flood.
+    AEGIS_DOS_PER_IP_RPS: float = 10.0
+    AEGIS_DOS_PER_IP_WINDOW: int = 10   # seconds; budget = RPS*WINDOW = 100/10s
+
+    # --- Per-/24-subnet aggregate window (catches clustered botnets) ---
+    AEGIS_DOS_SUBNET_RPS: float = 40.0
+    AEGIS_DOS_SUBNET_WINDOW: int = 10
+
+    # --- Global aggregate window (catches fully-distributed floods) ---
+    # Real API ~0.7 req/s, probe peak ~16.7 req/s → ~70x headroom on real traffic.
+    AEGIS_DOS_GLOBAL_RPS: float = 50.0
+    AEGIS_DOS_GLOBAL_WINDOW: int = 10
+
+    # --- Expensive-endpoint budget (AI inference, scan triggers) ---
+    AEGIS_DOS_EXPENSIVE_RPM: float = 6.0   # per-IP req/min = 1 per 10s
+    AEGIS_DOS_EXPENSIVE_PATHS: str = (
+        "/api/v1/ask,/api/v1/surface/scan,/api/v1/surface/scan/now"
+    )
+
+    # --- Slow-loris heuristics ---
+    AEGIS_DOS_CONCURRENCY_PER_IP: int = 20   # max concurrent in-flight per IP
+    AEGIS_DOS_SLOW_REQUEST_SECONDS: int = 25  # handler duration => slow-request tick
+
+    # --- Escalation / body / adaptive knobs ---
+    AEGIS_DOS_BLOCK_DURATION: int = 900       # seconds an escalated IP stays blocked
+    AEGIS_DOS_MAX_BODY_BYTES: int = 10485760  # 10 MB → 413 above this
+    AEGIS_DOS_UNDER_ATTACK_FACTOR: float = 0.5  # tighten budgets under attack
+    AEGIS_DOS_EVENT_COOLDOWN: int = 30        # min seconds between same (ip,reason) event
+
+    # Direct-peer IPs from which X-Forwarded-For is trusted for client-IP
+    # derivation. Default = localhost + Tailscale CGNAT. Any other peer uses the
+    # real socket IP, defeating XFF spoofing of rate-limit accounting.
+    AEGIS_DOS_TRUSTED_PROXIES: str = "127.0.0.1,::1,100.64.0.0/10"
+
+    # --- Network tier (gated by AEGIS_DOS_NETSHIELD) ---
+    AEGIS_DOS_NETSHIELD_SYN_RATE: int = 50    # per-source SYN pkts/sec (iptables hashlimit)
+    AEGIS_DOS_NETSHIELD_CONNLIMIT: int = 100  # max concurrent conns/source (iptables connlimit)
+
+    # --- IOC connection monitor (app.modules.network.connection_monitor) ---
+    # Default OFF. Polls established connections and publishes an event ONLY
+    # when the remote peer is an IP an enabled network_connection/connection
+    # rule matches on, or a threat_intel `ip` row. Generic traffic is never
+    # published: ordinary outbound HTTPS fed to sigma_exfil_uncommon_port would
+    # open incidents against OpenRouter/Cloudflare and could firewall off
+    # AEGIS's own dependencies. Turn on only when you want outbound C2-callback
+    # detection (the log path cannot see a callback that writes no log line).
+    AEGIS_CONNECTION_MONITOR: bool = False
+    AEGIS_CONNECTION_MONITOR_INTERVAL: int = 5   # seconds between samples
+
+    # CORS — comma-separated explicit allow-list. Wildcard ("*") is invalid
+    # combined with allow_credentials=True and is never used here (P0-10).
+    # Prod overrides via env with the real dashboard origin(s).
+    AEGIS_CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3007,http://127.0.0.1:3007"
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+settings = Settings()

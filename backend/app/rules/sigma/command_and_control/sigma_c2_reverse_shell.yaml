@@ -1,0 +1,19 @@
+id: sigma_c2_reverse_shell
+name: Reverse Shell Connection
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- Execution
+techniques:
+- T1059
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    cmdline_regex: (?i)(>&\s*/dev/tcp/|(<&\d+|(?<!2)>&\d+|\s-i\b)[^\n]*\d<>\s*/dev/tcp/|\d<>\s*/dev/tcp/[^\n]*(<&\d+|(?<!2)>&\d+)|/dev/tcp/[^\s;|&]+\s+(0>&\d|\d?<&\d)|\b(ba|z|da)?sh\s+-i\b[^|;]*>&|\bnc(at)?(\.exe)?\s+(?:[^\s|;&()]+\s+)*-(e|c)\s|\bmkfifo\b.*\b(nc|ncat|telnet)\b)
+entityMappings:
+- type: IP
+  field: source_ip
+description: Outbound connection from shell process indicating reverse shell.

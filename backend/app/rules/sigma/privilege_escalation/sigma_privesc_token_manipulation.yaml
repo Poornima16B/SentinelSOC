@@ -1,0 +1,27 @@
+id: sigma_privesc_token_manipulation
+name: Access Token Manipulation
+kind: sigma
+severity: critical
+enabled: false
+tactics:
+- PrivilegeEscalation
+techniques:
+- T1134
+data_sources:
+- edr
+condition:
+  event_type: token_manipulation
+  count_threshold: 1
+  time_window_seconds: 60
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `token_manipulation` events. No agent
+  sensor reports token duplication or impersonation. To revive it, add a
+  Windows sensor for it (ETW Security-Auditing 4703/4672 correlation or the
+  Threat-Intelligence provider) and map it in edr_events, then set `enabled:
+  true`.
+
+  Token impersonation or theft for privilege escalation.

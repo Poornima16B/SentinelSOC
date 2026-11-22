@@ -1,0 +1,1436 @@
+"""
+Real-time attack detection middleware for Cayde-6.
+
+Intercepts every HTTP request BEFORE routing. Double URL-decodes paths,
+query params, and POST bodies to catch encoded injection payloads.
+Auto-blocks IPs after 10 attacks in 5 minutes.
+
+OPTIMIZED v2: Mega-regex, fast-path skip, lazy body reading, blocked-IP-first,
+frozenset scanner UA check, perf_counter instrumentation, pre-built responses,
+module-level constants. Target: <30ms per detection.
+"""
+import asyncio
+import bisect
+import logging
+import os
+import re
+import socket
+import time
+from collections import defaultdict, deque
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+from urllib.parse import unquote_plus
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.core.ip_blocker import BLOCKED_IPS_FILE, atomic_write_text
+
+logger = logging.getLogger("cayde6.attack_detector")
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+BLOCK_THRESHOLD = 20         # v1.6.2: raised 3→20. The previous threshold guaranteed auto-block of legitimate GitHub Actions runners, Homebrew installers, and monitoring agents that use python-requests/curl/wget UAs. Pentest tools (sqlmap, nikto) below still hit threshold quickly via SCANNER_UAS path.
+BLOCK_WINDOW    = 300         # seconds (5 min)
+def _firewall_url() -> str:
+    """The Pi agent URL. pydantic Settings reads backend/.env; os.environ does
+    not, so reading only the environment silently disabled the Pi push for the
+    inline detector whenever the variable lived only in the .env file."""
+    url = os.getenv("AEGIS_FIREWALL_URL", "")
+    if not url:
+        try:
+            from app.config import settings as _settings
+            url = _settings.AEGIS_FIREWALL_URL or ""
+        except Exception:
+            url = ""
+    return url.rstrip("/")
+
+
+FIREWALL_URL    = _firewall_url()
+
+# Pre-built 403 response content (avoid re-creating per request)
+_BLOCKED_BODY = b'{"detail":"blocked"}'
+_BLOCKED_MEDIA = "application/json"
+
+# IPs that must NEVER be blocked or turned into an incident — configured via
+# the AEGIS_SAFE_IPS and/or AEGIS_INTERNAL_IPS env vars (both are merged into
+# the same SAFE_IPS/_SAFE_NETWORKS sets below; use whichever name reads
+# better for the entry -- e.g. AEGIS_INTERNAL_IPS for "this is one of MY
+# IPs", AEGIS_SAFE_IPS for "this third party is known-benign").
+# Entries may be single IPs ("127.0.0.1") OR CIDR ranges ("66.249.0.0/16").
+# Auto-detect the host's own IPs + Tailscale/private ranges
+import ipaddress as _ipaddress
+
+from app.core import safelist_store as _safelist_store
+
+
+def _parse_ip_safelist_env(var_name: str, default: str = "") -> tuple[set[str], list]:
+    """Parse a comma-separated env var of literal IPs and/or CIDR ranges.
+
+    Entries containing "/" are parsed as CIDR ranges via `ipaddress.ip_network`
+    (non-strict, so host bits may be set); everything else is treated as a
+    literal IP/hostname string. Invalid CIDR entries are logged and skipped —
+    this never raises, so a typo in an env var can never crash boot.
+
+    Reads pydantic `settings` FIRST, then os.environ. This order matters:
+    .env values are loaded by pydantic BaseSettings into `settings` and do
+    NOT land in os.environ, so an os.getenv-only read silently fell back to
+    `default` and the operator's entire safelist went inert (every configured
+    IP/CIDR was treated as hostile). os.environ remains the fallback for
+    values exported by the process manager rather than written to .env.
+
+    Returns (literal_ips, networks).
+    """
+    raw = ""
+    try:
+        from app.config import settings as _settings
+        raw = str(getattr(_settings, var_name, "") or "")
+    except Exception:  # pragma: no cover - defensive, keeps boot alive
+        raw = ""
+    if not raw:
+        raw = os.getenv(var_name, default)
+    literals: set[str] = set()
+    networks: list = []
+    for entry in (e.strip() for e in raw.split(",") if e.strip()):
+        if "/" in entry:
+            try:
+                networks.append(_ipaddress.ip_network(entry, strict=False))
+            except (ValueError, TypeError):
+                logger.warning(f"{var_name}: ignoring invalid CIDR {entry!r}")
+        else:
+            literals.add(entry)
+    return literals, networks
+
+
+_auto_ips: set[str] = set()
+try:
+    hostname = socket.gethostname()
+    for info in socket.getaddrinfo(hostname, None):
+        _auto_ips.add(info[4][0])
+except Exception:
+    pass
+
+# Private/internal IP ranges that should never be blocked (RFC1918 + CGNAT + Tailscale)
+_SAFE_NETWORKS: list = [
+    _ipaddress.ip_network("10.0.0.0/8"),
+    _ipaddress.ip_network("172.16.0.0/12"),
+    _ipaddress.ip_network("192.168.0.0/16"),
+    _ipaddress.ip_network("100.64.0.0/10"),   # CGNAT / Tailscale range
+]
+
+# ---------------------------------------------------------------------------
+# v1.6.5: ALWAYS-ON crawler / CDN IP range safelist.
+#
+# Public crawler networks (Google, Bing, Twitter/X, Meta, Apple, ...) publish
+# stable CIDR blocks. Previously benign crawlers were recognized ONLY by their
+# User-Agent string; if a crawler sent a request that happened to trip the
+# mega-regex (e.g. a blog URL containing "union select") from an IP whose UA
+# was stripped/custom, it could be detected and — after BLOCK_THRESHOLD hits —
+# the entire crawler /22 could be auto-blocked, breaking search indexing and
+# social link previews for the whole service.
+#
+# `_CRAWLER_NETWORKS` closes that gap as a permanent default layer BENEATH the
+# operator-configurable AEGIS_SAFE_IPS. It is checked by `_is_crawler_ip()` and
+# folded into `_is_safe_ip()`, so every existing safelist gate (middleware,
+# correlation_engine, attack_chain_detector, firewall_sync, guardrails,
+# responder, ip_blocker, phantom safety) automatically covers crawlers.
+#
+# CIDRs are published official ranges (Google goog.json, Microsoft bingbot,
+# Twitter/X, Meta/Facebook ASN blocks, Apple 17.0.0.0/8). Ranges intentionally
+# err on the wider side for stability; UA + mega-regex still protect against
+# spoofed crawler UAs from non-crawler IPs.
+#
+# PRECISE ranges only: networks the vendor itself operates and does NOT rent
+# out. Shared general-purpose cloud ranges (GCP / Azure customer space) live in
+# `_SHARED_CLOUD_NETWORKS` below and are only safe conditionally.
+_CRAWLER_NETWORKS: list = [
+    _ipaddress.ip_network(_cidr)
+    for _cidr in (
+        # --- Google (Search, GoogleOther, feeds, AMP, Cloud crawlers) ---
+        "66.249.64.0/19",   # Googlebot primary
+        "66.102.0.0/20",    # Google secondary (research, feeds, AMP)
+        "64.233.160.0/19",  # Google infrastructure
+        "216.239.32.0/19",  # Google infrastructure
+        # --- Microsoft / Bing ---
+        "40.77.0.0/16",     # Bingbot
+        "157.55.0.0/16",    # Bingbot / MSN
+        "207.46.0.0/16",    # Bingbot legacy
+        # --- Twitter / X ---
+        "199.16.156.0/22",  # Twitterbot / X card fetcher
+        "192.133.76.0/22",  # Twitter / X secondary
+        # --- Meta / Facebook (facebookexternalhit, Graph API, Threads) ---
+        "31.13.24.0/21",
+        "31.13.64.0/18",
+        "66.220.144.0/20",
+        "69.63.176.0/20",
+        "173.252.64.0/18",  # Meta primary data center (Graph API, embeds)
+        "57.141.0.0/16",    # Meta international carrier (WhatsApp previews)
+        "129.134.0.0/16",   # Meta / Facebook
+        # --- Apple (Applebot, Apple News, iMessage link previews) ---
+        "17.0.0.0/8",
+    )
+]
+
+
+# Shared general-purpose cloud ranges. Crawlers (GoogleOther, Bing on Azure)
+# do run here, but so does every customer who rents a VM -- including the
+# scanners and attackers we most want to see. Previously these were
+# unconditionally safe (a ~4M-IP blind spot). Now an IP in these ranges is safe
+# ONLY when the request's User-Agent claims a known crawler AND forward-confirmed
+# reverse DNS (googlebot.com / google.com / search.msn.com) has verified the IP.
+# Any caller without a UA (EDR, honeypots, chain detector, firewall sync) treats
+# these IPs as NOT safe.
+_SHARED_CLOUD_NETWORKS: list = [
+    _ipaddress.ip_network(_cidr)
+    for _cidr in (
+        "34.64.0.0/10",     # Google Cloud (customer VMs + GoogleOther)
+        "35.190.0.0/17",    # Google Cloud LB / customer VMs
+        "13.66.0.0/17",     # Azure (customer VMs + Bing crawlers)
+    )
+]
+
+# PTR suffixes accepted for FCrDNS. Narrow on purpose: no googleusercontent.com,
+# amazonaws.com, cloudapp.azure.com etc. -- any tenant can obtain those PTRs.
+_CRAWLER_PTR_SUFFIXES = (".googlebot.com", ".google.com", ".search.msn.com")
+_RDNS_TTL_VERIFIED = 6 * 3600.0
+_RDNS_TTL_REJECTED = 15 * 60.0
+_RDNS_TIMEOUT_S = 3.0
+_RDNS_CACHE_MAX = 4096
+_RDNS_INFLIGHT_MAX = 32
+_rdns_cache: dict = {}        # ip -> (verified: bool, expires_monotonic)
+_rdns_inflight: set = set()
+
+
+def _is_shared_cloud_ip(ip: str) -> bool:
+    """True if `ip` is inside a shared cloud range (conditionally safe only)."""
+    if not ip:
+        return False
+    try:
+        addr = _ipaddress.ip_address(ip)
+    except (ValueError, TypeError):
+        return False
+    return any(addr in net for net in _SHARED_CLOUD_NETWORKS)
+
+
+def _fcrdns_verify_blocking(ip: str) -> bool:
+    """Forward-confirmed reverse DNS. BLOCKING -- run via a thread only."""
+    try:
+        host = socket.gethostbyaddr(ip)[0].rstrip(".").lower()
+        if not host.endswith(_CRAWLER_PTR_SUFFIXES):
+            return False
+        want = _ipaddress.ip_address(ip)
+        forward = {_ipaddress.ip_address(i[4][0]) for i in socket.getaddrinfo(host, None)}
+        return want in forward
+    except Exception:
+        return False
+
+
+def _rdns_cached_verdict(ip: str):
+    """Cache-only lookup (no I/O). True/False if known and fresh, else None."""
+    entry = _rdns_cache.get(ip)
+    if entry is None:
+        return None
+    if entry[1] < time.monotonic():
+        _rdns_cache.pop(ip, None)
+        return None
+    return entry[0]
+
+
+async def _rdns_verify_task(ip: str) -> None:
+    try:
+        ok = await asyncio.wait_for(
+            asyncio.to_thread(_fcrdns_verify_blocking, ip), timeout=_RDNS_TIMEOUT_S
+        )
+    except Exception:
+        ok = False
+    finally:
+        _rdns_inflight.discard(ip)
+    if len(_rdns_cache) >= _RDNS_CACHE_MAX:
+        now = time.monotonic()
+        for k in [k for k, v in _rdns_cache.items() if v[1] < now]:
+            _rdns_cache.pop(k, None)
+        while len(_rdns_cache) >= _RDNS_CACHE_MAX:
+            _rdns_cache.pop(next(iter(_rdns_cache)), None)
+    ttl = _RDNS_TTL_VERIFIED if ok else _RDNS_TTL_REJECTED
+    _rdns_cache[ip] = (ok, time.monotonic() + ttl)
+
+
+def _schedule_rdns_verification(ip: str) -> None:
+    """Fire-and-forget FCrDNS for `ip`. Never blocks, never raises."""
+    if ip in _rdns_inflight or len(_rdns_inflight) >= _RDNS_INFLIGHT_MAX:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    _rdns_inflight.add(ip)
+    loop.create_task(_rdns_verify_task(ip))
+
+
+def _is_verified_shared_crawler(ip: str, user_agent: str) -> bool:
+    """True iff `ip` is in a shared cloud range, `user_agent` claims a known
+    crawler, and cached FCrDNS verified the IP. On a cache miss, schedules the
+    verification and returns False (normal detection applies meanwhile)."""
+    if not user_agent or not _is_shared_cloud_ip(ip) or not _check_benign_ua(user_agent):
+        return False
+    verdict = _rdns_cached_verdict(ip)
+    if verdict is None:
+        _schedule_rdns_verification(ip)
+        return False
+    return verdict
+
+
+def _is_crawler_ip(ip: str) -> bool:
+    """True if `ip` falls inside a PRECISE published crawler/CDN network.
+
+    Parse-safe: returns False for malformed input. This is an always-on
+    default layer independent of AEGIS_SAFE_IPS.
+    """
+    if not ip:
+        return False
+    try:
+        addr = _ipaddress.ip_address(ip)
+    except (ValueError, TypeError):
+        return False
+    return any(addr in net for net in _CRAWLER_NETWORKS)
+
+# ---------------------------------------------------------------------------
+# Shared consumer egress: NO-BLOCK, STILL-ALERT.
+#
+# A third category that is deliberately NOT either of the two above, and must
+# not be collapsed into them:
+#
+#   * `_CRAWLER_NETWORKS` is "trusted": never blocked AND never an incident.
+#     Putting WARP / Private Relay there would blind AEGIS to every real attack
+#     that arrives through them -- a scanner only has to turn WARP on.
+#   * `_SHARED_CLOUD_NETWORKS` is "hostile unless proven a crawler": attackers
+#     rent those VMs, and one IP is one tenant, so blocking it is precise.
+#
+# Consumer egress is the opposite of precise. Thousands of unrelated real
+# people (every iPhone with Private Relay, every browser with WARP) exit
+# through the same few addresses, so blocking one punishes the whole crowd for
+# one visitor's probe -- and gains nothing, because the attacker reconnects
+# through a different exit within seconds. On 2026-10-28 five such addresses
+# were auto-blocked after an `.env` probe and real visitors got 403s from the
+# owner's public sites.
+#
+# So these IPs are fully detected, correlated and raised as incidents, but are
+# never auto-blocked (`is_shared_egress`). They are NOT folded into
+# `_is_safe_ip`: that gate also suppresses detection. Blocking paths consult
+# `is_shared_egress` separately; a human can still block one deliberately via
+# an approved action (guardrails demand approval for it).
+#
+# Ranges, only where the vendor publishes them:
+#   * iCloud Private Relay: Apple's own CSV, vendored (collapsed) in
+#     app/data/icloud_private_relay_egress.txt. Source:
+#     https://mask-api.icloud.com/egress-ip-ranges.csv -- refresh with
+#     scripts/update_shared_egress.py.
+#   * Cloudflare WARP (consumer 1.1.1.1 app): 104.28.0.0/16 below. Cloudflare
+#     does not label WARP egress as such (its docs say Cloudflare One client
+#     egress is "not listed" on cloudflare.com/ips), so this rests on three
+#     facts: it is absent from Cloudflare's published proxy ranges
+#     (https://www.cloudflare.com/ips-v4, which stops at 104.24.0.0/14); it is
+#     published per-/32 with per-country geolocation in Cloudflare's own geofeed
+#     (https://api.cloudflare.com/local-ip-ranges.csv), the shape of client
+#     egress rather than anycast; and the five addresses blocked on 2026-10-28
+#     sit inside it. WARP's IPv6 egress has no authoritative published range, so
+#     none is listed here; the Private Relay file already carries Cloudflare's
+#     v6 relay space.
+# Operators extend this with AEGIS_SHARED_EGRESS_IPS (IPs and/or CIDRs).
+_SHARED_EGRESS_NETWORKS: list = [
+    _ipaddress.ip_network(_cidr)
+    for _cidr in (
+        "104.28.0.0/16",    # Cloudflare WARP consumer egress (see evidence above)
+    )
+]
+
+_SHARED_EGRESS_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "icloud_private_relay_egress.txt"
+
+
+def _load_range_index(path) -> tuple[list, list]:
+    """Load a one-CIDR-per-line file into sorted (v4, v6) interval lists.
+
+    Each list holds (first, last) integer pairs sorted by `first`, so a lookup
+    is one bisect instead of a scan over ~14k networks. The input is the
+    collapsed Private Relay file, so intervals do not overlap. Fail-safe: a
+    missing/unreadable file yields empty indexes and logs, never raises.
+    """
+    v4: list = []
+    v6: list = []
+    try:
+        for line in Path(path).read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                net = _ipaddress.ip_network(line, strict=False)
+            except ValueError:
+                continue
+            (v4 if net.version == 4 else v6).append(
+                (int(net.network_address), int(net.broadcast_address))
+            )
+    except Exception as exc:
+        logger.warning(f"shared-egress range file {path} unavailable: {exc}")
+    v4.sort()
+    v6.sort()
+    return v4, v6
+
+
+_SHARED_EGRESS_V4, _SHARED_EGRESS_V6 = _load_range_index(_SHARED_EGRESS_DATA_FILE)
+_shared_egress_literals, _shared_egress_env_nets = _parse_ip_safelist_env("AEGIS_SHARED_EGRESS_IPS")
+_SHARED_EGRESS_NETWORKS.extend(_shared_egress_env_nets)
+
+
+def _in_range_index(index: list, value: int) -> bool:
+    i = bisect.bisect_right(index, (value, float("inf"))) - 1
+    return i >= 0 and index[i][0] <= value <= index[i][1]
+
+
+def is_shared_egress(ip: str) -> bool:
+    """True if `ip` is shared consumer egress (WARP / Private Relay / operator list).
+
+    Such an IP must never be auto-blocked, but IS still detected and alerted on
+    -- see the block comment above. Parse-safe: malformed input returns False.
+    """
+    if not ip or not isinstance(ip, str):
+        return False
+    if ip in _shared_egress_literals:
+        return True
+    try:
+        addr = _ipaddress.ip_address(ip)
+    except (ValueError, TypeError):
+        return False
+    if any(addr in net for net in _SHARED_EGRESS_NETWORKS):
+        return True
+    if _safelist_store.matches(_safelist_store.SHARED_EGRESS, ip, addr):
+        return True  # operator addition via the API (live, persisted)
+    return _in_range_index(
+        _SHARED_EGRESS_V4 if addr.version == 4 else _SHARED_EGRESS_V6, int(addr)
+    )
+
+
+# Parse AEGIS_SAFE_IPS (default: loopback/localhost) AND AEGIS_INTERNAL_IPS
+# (no default -- purely additive). Both feed the SAME SAFE_IPS / _SAFE_NETWORKS
+# sets so every downstream consumer of _is_safe_ip() -- blocking, incident
+# creation across log_watcher/ai_engine/correlation_engine, guardrails,
+# phantom, firewall_sync -- honors either variable identically. Fail-safe:
+# if both are unset, AEGIS_SAFE_IPS keeps its historical default and nothing
+# about today's behavior changes.
+_safe_literals: set[str] = set()
+
+_safe_ips_literals, _safe_ips_nets = _parse_ip_safelist_env(
+    "AEGIS_SAFE_IPS", "127.0.0.1,::1,localhost"
+)
+_safe_literals |= _safe_ips_literals
+_SAFE_NETWORKS.extend(_safe_ips_nets)
+
+_internal_ips_literals, _internal_ips_nets = _parse_ip_safelist_env("AEGIS_INTERNAL_IPS")
+if _internal_ips_literals or _internal_ips_nets:
+    logger.info(
+        f"AEGIS_INTERNAL_IPS loaded: {sorted(_internal_ips_literals)} + "
+        f"{len(_internal_ips_nets)} CIDR range(s) -- merged into the safe-IP gate"
+    )
+_safe_literals |= _internal_ips_literals
+_SAFE_NETWORKS.extend(_internal_ips_nets)
+
+SAFE_IPS = frozenset(_safe_literals) | _auto_ips
+
+
+def _is_safe_ip(ip: str, user_agent: Optional[str] = None) -> bool:
+    """Check if an IP is safe (never block / never create incident).
+
+    Shared cloud ranges (`_SHARED_CLOUD_NETWORKS`) are safe only when the caller
+    supplies a `user_agent` that claims a known crawler and the IP has passed
+    FCrDNS (`_is_verified_shared_crawler`). UA-less callers get False for them.
+
+    Safe = literal SAFE_IPS (includes AEGIS_SAFE_IPS + AEGIS_INTERNAL_IPS
+    literals), loopback, a private/Tailscale/AEGIS_SAFE_IPS/AEGIS_INTERNAL_IPS
+    CIDR range, OR a published crawler/CDN network (`_is_crawler_ip`). Folding
+    crawlers in here means every downstream safelist gate covers them for free.
+    """
+    if ip in SAFE_IPS:
+        return True
+    try:
+        addr = _ipaddress.ip_address(ip)
+    except (ValueError, TypeError):
+        return False
+    # Loopback is always safe regardless of how AEGIS_SAFE_IPS was
+    # configured -- an operator overriding the env var entirely (rather than
+    # extending it) must never accidentally lose this.
+    if addr.is_loopback:
+        return True
+    if any(addr in net for net in _SAFE_NETWORKS):
+        return True
+    # Operator additions made through the API (safelist_store): same meaning as
+    # the env entries, but live without a restart. Both categories feed the one
+    # gate, exactly like AEGIS_SAFE_IPS / AEGIS_INTERNAL_IPS do.
+    if _safelist_store.matches(_safelist_store.SAFE, ip, addr) or \
+            _safelist_store.matches(_safelist_store.INTERNAL, ip, addr):
+        return True
+    if any(addr in net for net in _CRAWLER_NETWORKS):
+        return True
+    return bool(user_agent) and _is_verified_shared_crawler(ip, user_agent)
+
+# ---------------------------------------------------------------------------
+# FAST-PATH: paths that skip ALL detection (internal/health endpoints)
+# ---------------------------------------------------------------------------
+
+SKIP_PATHS = frozenset({
+    "/health",
+    "/api/v1/nodes/heartbeat",
+    "/api/v1/nodes/announce",
+    "/api/v1/nodes/events",
+})
+
+# Module-level constants (avoid per-request allocation)
+_MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH"})
+
+# Endpoint-agent telemetry uploads. Their JSON bodies legitimately carry
+# process command lines (powershell.exe -NoProfile, cmd.exe /c ...) that the
+# body inspection would flag as command_injection and auto-block the agent's
+# own IP. Explicit allowlist: keep it narrow.
+_AGENT_TELEMETRY_PATHS = frozenset({
+    "/api/v1/edr/events",
+    "/api/v1/agents/events",
+    "/api/v1/agents/forensic",
+    "/api/v1/nodes/events",
+    "/api/v1/nodes/report-assets",
+    "/api/v1/ransomware/events",
+    "/api/v1/antivirus/detections",
+})
+
+
+def _skip_body_inspection(path: str, headers) -> bool:
+    """True for agent telemetry uploads that present node credentials.
+
+    Header presence only (no DB lookup): the route itself rejects bad tokens
+    and the body is parsed as JSON data, never executed. Path, query and
+    header inspection still run.
+    """
+    if path.rstrip("/") not in _AGENT_TELEMETRY_PATHS:
+        return False
+    return bool(headers.get("x-aegis-node-token"))
+_AUTH_PATHS = ("/auth/login", "/auth/user/login", "/auth/token")
+
+# ---------------------------------------------------------------------------
+# MEGA-REGEX: single compiled pattern with named groups for all attack types
+# One re.search() instead of 6 separate calls.
+# ---------------------------------------------------------------------------
+
+MEGA_PATTERN = re.compile(
+    # SQL Injection
+    r"(?P<sql_injection>"
+    r"union\s+(all\s+)?select"
+    r"|or\s+1\s*=\s*1"
+    r"|and\s+1\s*=\s*1"
+    r"|'\s*or\s*'"
+    r"|;\s*select\b"
+    r"|;\s*drop\b"
+    r"|;\s*insert\b"
+    r"|;\s*update\b.*\bset\b"
+    r"|;\s*delete\b"
+    r"|information_schema"
+    r"|sleep\s*\(\s*\d"
+    r"|benchmark\s*\("
+    r"|load_file\s*\("
+    r"|into\s+outfile"
+    r"|'\s*--"
+    r"|'\s*#"
+    r"|1'\s*or\s*'1'\s*=\s*'1"
+    r"|admin'\s*--"
+    r"|waitfor\s+delay"
+    r"|extractvalue\s*\("
+    r"|updatexml\s*\("
+    r"|group_concat\s*\("
+    r")"
+    # XSS
+    r"|(?P<xss>"
+    r"<script[\s>]"
+    r"|javascript\s*:"
+    r"|onerror\s*="
+    r"|onload\s*="
+    r"|onmouseover\s*="
+    r"|onfocus\s*="
+    r"|<img\s+[^>]*src\s*=\s*['\"]?x"
+    r"|<svg[\s/+]"
+    r"|<iframe"
+    r"|document\.cookie"
+    r"|document\.write"
+    r"|eval\s*\("
+    r"|alert\s*\("
+    r"|prompt\s*\("
+    r"|confirm\s*\("
+    r")"
+    # Command Injection
+    r"|(?P<command_injection>"
+    r";\s*(?:cat|ls|id|whoami|uname|wget|curl|nc|bash|sh|python|perl|ruby)\b"
+    r"|\|\s*(?:cat|ls|id|whoami|uname|wget|curl|nc|bash|sh)\b"
+    r"|&&\s*(?:id|whoami|cat|ls)\b"
+    r"|`[^`]*`"
+    r"|\$\([^)]*\)"
+    r"|\bexec\s*\("
+    r"|\bsystem\s*\("
+    r"|\bpassthru\s*\("
+    r"|\bpopen\s*\("
+    r")"
+    # Path Traversal
+    r"|(?P<path_traversal>"
+    r"\.\./|\.\.\\|"
+    r"/etc/passwd"
+    r"|/etc/shadow"
+    r"|/proc/self"
+    r"|/windows/system32"
+    r"|/var/log"
+    r"|\.htaccess"
+    r"|\.htpasswd"
+    r"|/web\.config"
+    r"|wp-config\.php"
+    r")"
+    # Scanner/Recon signatures (in URL/path, not UA)
+    r"|(?P<scanner>"
+    r"nmap|nikto|sqlmap|masscan|gobuster|dirbuster|wfuzz|nuclei|zgrab"
+    r"|hydra|burpsuite|acunetix|nessus|openvas|arachni|w3af"
+    r"|nmaplowercheck|/sdk|/evox|/HNAP1|/manager/html"
+    r"|/solr/|/actuator|/wp-login|/xmlrpc\.php|/\.env"
+    r"|/\.git/|/admin/config|/debug|/server-status|/server-info"
+    r")"
+    # SSRF indicators
+    r"|(?P<ssrf>"
+    r"http://169\.254\.169\.254"
+    r"|http://metadata\.google"
+    r"|http://100\.100\.100\.200"
+    r"|http://localhost"
+    r"|http://127\.0\.0\.1"
+    r"|http://0\.0\.0\.0"
+    r"|file:///"
+    r")",
+    re.IGNORECASE,
+)
+
+# Severity mapping for mega-regex named groups
+_SEVERITY_MAP = {
+    "sql_injection": "high",
+    "xss": "medium",
+    "command_injection": "critical",
+    "path_traversal": "high",
+    "scanner": "low",
+    "ssrf": "high",
+}
+
+# ---------------------------------------------------------------------------
+# SCANNER UA: frozenset substring check (no regex needed)
+# ---------------------------------------------------------------------------
+
+SCANNER_UAS = frozenset({
+    # v1.6.2: trimmed to genuine offensive-tool signatures. Removed:
+    #   python-requests, go-http-client, libcurl, wget/, httpie, scrapy
+    # — those are also used by GitHub Actions runners, Homebrew updaters,
+    # PM2 heartbeats, prometheus exporters, etc. (3-strike auto-block on those
+    # produced FP outages of legitimate clients per 2026-06-23 audit).
+    "nmap", "nikto", "sqlmap", "masscan", "gobuster", "dirbuster",
+    "wfuzz", "nuclei", "zgrab", "hydra", "burpsuite", "acunetix",
+    "nessus", "openvas", "arachni", "httrack",
+    "morfeus", "zmeu", "w3af",
+})
+
+
+# v1.6.4: known-good User-Agent substrings. When a request matches ANY of
+# these (case-insensitive substring), the middleware skips ALL detection
+# paths for that request — same effect as if the source IP were in
+# AEGIS_SAFE_IPS. Used for crawlers / monitoring bots that publish stable
+# UAs but rotate IPs, so CIDR safelisting is impractical.
+#
+# Sources (June 2026 research):
+#   - Search engines without published CIDRs: DuckDuckBot, Yandex, Baidu,
+#     Sogou, 360Spider, Naver Yeti, Common Crawl, Seznam
+#   - Social link unfurl: Discordbot, Slackbot, Mastodon, Vercelbot,
+#     facebookexternalhit (WhatsApp), Twitterbot
+#   - RSS readers: Feedly, FeedlyBot, NewsBlur, Inoreader
+#   - Monitoring services where IPs rotate: Pingdom, UptimeRobot,
+#     BetterStack ("Better Uptime"), Checkly, Freshping, Datadog Synthetics
+#   - Security scanners that self-identify: Censys (CensysInspect),
+#     BitSightBot, archive.org_bot
+#
+# Operators can extend at runtime via AEGIS_BENIGN_UAS (comma-separated,
+# substring match, case-insensitive).
+_BENIGN_UAS_DEFAULTS = frozenset({
+    # Search engine crawlers
+    "duckduckbot",
+    "yandexbot", "yandeximages", "yandexvideo", "yandexnews",
+    "baiduspider",
+    "sogou web spider", "sogou pic spider", "sogou inst spider",
+    "360spider", "haosouspider",
+    "yeti/",  # Naver Yeti
+    "ccbot/", "commoncrawl",
+    "seznambot",
+    "applebot",
+    "googlebot",  # v1.6.5: cheaper UA check; IP ranges now in _CRAWLER_NETWORKS
+    "bingbot", "msnbot", "adidxbot",
+    "twitterbot",
+    "linkedinbot",
+    "facebookexternalhit",  # also WhatsApp link preview
+    "facebookcatalog",
+    # Social / messaging link unfurl
+    "discordbot",
+    "slackbot",   # also matches "Slackbot-LinkExpanding"
+    "telegrambot",
+    "mastodon/", "akkoma/",
+    "vercelbot",
+    "qwantbot",
+    # RSS / news readers
+    "feedly",  # matches Feedly/1.0 and FeedlyBot/1.0
+    "newsblur",
+    "inoreader",
+    # Uptime / monitoring services
+    "pingdom",
+    "uptimerobot",
+    "better uptime",  # BetterStack
+    "checkly/",
+    "freshpingbot",
+    "datadogsynthetics", "synthetic-test-monitor",
+    "newrelic-synthetics",
+    # Self-identifying security scanners (research/benign)
+    "censysinspect",
+    "bitsightbot",
+    "archive.org_bot",
+    "shadowserver",
+    # v1.6.3.5 — modern Threads + Meta + Apple + LLM crawler variants
+    "threadsbot",
+    "meta-externalagent",
+    "meta-externalfetcher",
+    "facebookbot",
+    "slack-imgproxy",
+    "applebot-extended",
+    "googleother",
+    "google-extended",
+    "gptbot",
+    "oai-searchbot",       # OpenAI search crawler
+    "chatgpt-user",        # ChatGPT browsing on-demand fetch
+    "claudebot",
+    "claude-web",
+    "perplexitybot",
+    "perplexity-user",
+    "anthropic-ai",
+    "amazonbot",
+    "bytespider",          # ByteDance / TikTok
+    "imagesiftbot",
+    "bingpreview",
+    "whatsapp",
+})
+
+
+def _load_benign_uas_env() -> frozenset[str]:
+    """Merge AEGIS_BENIGN_UAS env extensions with the built-in defaults."""
+    raw = (os.environ.get("AEGIS_BENIGN_UAS") or "").lower()
+    extras = {part.strip() for part in raw.split(",") if part.strip()}
+    return frozenset(_BENIGN_UAS_DEFAULTS | extras)
+
+
+# Resolved at import time; restart picks up env changes.
+BENIGN_UAS = _load_benign_uas_env()
+
+# Breadcrumb trap credentials (static indicators)
+BREADCRUMB_INDICATORS = (
+    "Tr4p_P4ssw0rd_2026",
+    "AKIAIOSFODNN7BREADCRUMB",
+    "sk-breadcrumb-trap-key",
+    "sk_live_breadcrumb_trap",
+    "breadcrumb-jwt-secret",
+    "Tr4p_Adm1n_2026",
+)
+
+# Dynamic breadcrumb patterns from smart honeypots (regex)
+import re as _re
+BREADCRUMB_PATTERNS = (
+    _re.compile(r"sk-breadcrumb-[0-9a-f]{8}"),
+    _re.compile(r"sk_live_breadcrumb_[0-9a-f]{8}"),
+    _re.compile(r"Pr0d_P4ss_[0-9a-f]{8}"),
+    _re.compile(r"nextauth-[0-9a-f]{8}"),
+    _re.compile(r"jwt-secret-[0-9a-f]{8}"),
+    _re.compile(r"mail_[0-9a-f]{8}"),
+    _re.compile(r"pusher-[0-9a-f]{8}"),
+)
+
+# ---------------------------------------------------------------------------
+# In-memory state
+# ---------------------------------------------------------------------------
+
+# Per-IP attack tracking: ip -> deque of (timestamp, pattern_name)
+_attack_log: dict[str, deque] = defaultdict(deque)
+
+# Blocked IPs (auto-blocked by this middleware)
+_blocked_ips: set[str] = set()
+
+# Stats
+_stats = {
+    "total_detections": 0,
+    "total_blocks": 0,
+    "shared_egress_skips": 0,   # detections on shared-egress IPs that were NOT blocked
+    "detections_by_type": defaultdict(int),
+    "last_detection_us": 0,      # last detection time in microseconds
+    "avg_detection_us": 0.0,     # rolling average detection time
+    "detection_samples": 0,      # number of samples for average
+}
+
+
+def _load_blocked_ips():
+    """Load blocked IPs from file on startup."""
+    try:
+        if BLOCKED_IPS_FILE.exists():
+            for line in BLOCKED_IPS_FILE.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    _blocked_ips.add(line)
+            logger.info(f"[AttackDetector] Loaded {len(_blocked_ips)} blocked IPs from file")
+    except Exception as e:
+        logger.error(f"[AttackDetector] Failed to load blocked IPs: {e}")
+
+
+# Load on import
+_load_blocked_ips()
+
+
+def _double_decode(text: str) -> str:
+    """Double URL-decode to catch %25xx and +-as-space encoding tricks.
+    Fast-path: skip if no percent sign present."""
+    if "%" not in text and "+" not in text:
+        return text
+    try:
+        return unquote_plus(unquote_plus(text))
+    except Exception:
+        return text
+
+
+def _check_mega(text: str) -> Optional[tuple[str, str]]:
+    """Single mega-regex check. Returns (name, severity) or None."""
+    m = MEGA_PATTERN.search(text)
+    if m:
+        group_name = m.lastgroup
+        return (group_name, _SEVERITY_MAP.get(group_name, "medium"))
+    return None
+
+
+def _check_scanner_ua(user_agent: str) -> bool:
+    """Fast scanner UA detection using frozenset substring matching."""
+    ua_lower = user_agent.lower()
+    return any(s in ua_lower for s in SCANNER_UAS)
+
+
+def _check_benign_ua(user_agent: str) -> bool:
+    """v1.6.4: True if UA matches a known-good crawler/monitor.
+
+    Substring match against `BENIGN_UAS` (defaults + AEGIS_BENIGN_UAS env).
+    Called before any threat detection so legitimate bots don't trip rules.
+    """
+    if not user_agent:
+        return False
+    ua_lower = user_agent.lower()
+    return any(marker in ua_lower for marker in BENIGN_UAS)
+
+
+def _blocked_response() -> Response:
+    """Return a pre-formatted 403 response."""
+    return Response(content=_BLOCKED_BODY, status_code=403, media_type=_BLOCKED_MEDIA)
+
+
+async def _block_ip(ip: str, reason: str):
+    """Block an IP: add to memory set, append to file, notify external firewall."""
+    if not ip or not isinstance(ip, str):
+        logger.warning(f"[AttackDetector] _block_ip called with invalid IP: {ip!r}, skipping")
+        return
+
+    if _is_safe_ip(ip):
+        logger.warning(f"[AttackDetector] Refusing to block safe IP {ip}")
+        return
+
+    if is_shared_egress(ip):
+        # Detected and alerted, never blocked: thousands of real users share
+        # this address (see _SHARED_EGRESS_NETWORKS). The caller still answers
+        # the offending request with a 403; only the IP-level block is skipped.
+        logger.warning(
+            f"[AttackDetector] NOT blocking shared-egress IP {ip} -- reason: {reason}"
+        )
+        _stats["shared_egress_skips"] += 1
+        if _shared_egress_incident_due(ip):
+            asyncio.ensure_future(_create_block_incident(ip, reason, blocked=False))
+        return
+
+    _blocked_ips.add(ip)
+    _stats["total_blocks"] += 1
+
+    # Persist to file
+    try:
+        lines = BLOCKED_IPS_FILE.read_text().splitlines() if BLOCKED_IPS_FILE.exists() else []
+        if ip not in {l.strip() for l in lines}:
+            atomic_write_text(BLOCKED_IPS_FILE, "\n".join(lines + [ip]) + "\n")
+    except Exception as e:
+        logger.error(f"[AttackDetector] Failed to write blocked IP to file: {e}")
+
+    # Also update ip_blocker_service if available
+    try:
+        from app.core.ip_blocker import ip_blocker_service
+        ip_blocker_service.block_ip(ip)
+    except Exception:
+        pass
+
+    # Create incident in DB (fire-and-forget to avoid blocking the response)
+    asyncio.ensure_future(_create_block_incident(ip, reason))
+
+    # Notify external firewall (fire-and-forget)
+    asyncio.ensure_future(_notify_firewall(ip, reason))
+
+    logger.warning(f"[AttackDetector] AUTO-BLOCKED IP {ip} -- reason: {reason}")
+
+    # Share to MongoDB (fire-and-forget)
+    asyncio.ensure_future(_share_to_mongo(ip, reason))
+
+    # Post-block investigation: AI verifies if block is a false positive (fire-and-forget)
+    # Block first (safety), investigate second (2-5s AI call)
+    try:
+        from app.services.ip_investigator import ip_investigator
+        asyncio.ensure_future(ip_investigator.investigate_blocked_ip(ip, reason))
+    except Exception as e:
+        logger.debug(f"[AttackDetector] IP investigation skipped: {e}")
+
+
+# A shared-egress IP is never blocked, so detection keeps firing on every
+# request past the threshold. One incident per IP per hour keeps the operator
+# informed without flooding the table (the blocked path gets this for free:
+# a blocked IP never reaches detection again).
+_SHARED_EGRESS_INCIDENT_COOLDOWN_S = 3600.0
+_SHARED_EGRESS_INCIDENT_MAX = 2048
+_shared_egress_incident_at: dict[str, float] = {}
+
+
+def _shared_egress_incident_due(ip: str) -> bool:
+    now = time.monotonic()
+    last = _shared_egress_incident_at.get(ip)
+    if last is not None and now - last < _SHARED_EGRESS_INCIDENT_COOLDOWN_S:
+        return False
+    if len(_shared_egress_incident_at) >= _SHARED_EGRESS_INCIDENT_MAX:
+        for k in [k for k, v in _shared_egress_incident_at.items()
+                  if now - v >= _SHARED_EGRESS_INCIDENT_COOLDOWN_S]:
+            _shared_egress_incident_at.pop(k, None)
+        while len(_shared_egress_incident_at) >= _SHARED_EGRESS_INCIDENT_MAX:
+            _shared_egress_incident_at.pop(next(iter(_shared_egress_incident_at)), None)
+    _shared_egress_incident_at[ip] = now
+    return True
+
+
+def _block_incident_text(ip: str, reason: str, blocked: bool) -> tuple[str, str]:
+    """(title, description) for the incident raised when an IP crosses the threshold."""
+    if blocked:
+        return (
+            f"CRITICAL: Auto-blocked IP {ip}",
+            f"IP {ip} was auto-blocked after exceeding "
+            f"{BLOCK_THRESHOLD} attacks in {BLOCK_WINDOW}s. Reason: {reason}",
+        )
+    return (
+        f"CRITICAL: Attack from shared-egress IP {ip} (NOT blocked)",
+        f"IP {ip} exceeded {BLOCK_THRESHOLD} attacks in {BLOCK_WINDOW}s but was "
+        f"NOT blocked: it is shared consumer egress (Cloudflare WARP / iCloud "
+        f"Private Relay or an AEGIS_SHARED_EGRESS_IPS entry) used by many "
+        f"legitimate visitors, and the attacker would simply reconnect through "
+        f"another exit. Offending requests are still refused individually. "
+        f"Review it and block deliberately only if you are sure. Reason: {reason}",
+    )
+
+
+INLINE_PROVISIONAL_TTL_SECONDS = 3600   # matches the `duration` sent to the Pi
+
+
+async def _record_inline_block_action(db, client_id: str, incident_id: str, ip: str, reason: str) -> None:
+    """Give an inline block the same record every other block has.
+
+    Without an Action the block is invisible to retention: the Pi lifted an
+    ambiguous one after an hour while the local 403 stayed forever, which is the
+    opposite of block_policy ("only confirmed attacks are permanent"). With it,
+    expiry, promotion on later evidence, rollback and the Pi reconcile all
+    apply. Caller commits.
+    """
+    from datetime import timedelta
+    from app.models.action import Action
+    from app.services import block_policy
+
+    if await block_policy.live_block_actions(db, ip):
+        return  # one block per IP: the live action already decides its fate
+    cls = block_policy.classify(reason)
+    permanent = cls.kind == block_policy.CONFIRMED or block_policy.force_permanent()
+    if permanent:
+        params = {"permanent": True, "block_class": cls.kind,
+                  "block_class_reason": f"inline:{cls.matched or reason}"[:200]}
+    else:
+        expires = datetime.utcnow() + timedelta(seconds=INLINE_PROVISIONAL_TTL_SECONDS)
+        params = {"provisional": True, "expires_at": expires.isoformat(),
+                  "ttl_hours": INLINE_PROVISIONAL_TTL_SECONDS / 3600, "block_class": cls.kind}
+    params["origin"] = "attack_detector"
+    db.add(Action(
+        incident_id=incident_id, client_id=client_id, action_type="block_ip", target=ip,
+        parameters=params, status="executed", requires_approval=False,
+        ai_reasoning=f"Inline detector block: {reason}"[:1000],
+    ))
+
+
+async def _create_block_incident(ip: str, reason: str, blocked: bool = True):
+    """Create incident in DB. Runs as fire-and-forget task."""
+    try:
+        from app.database import async_session as _async_session
+        from app.models.incident import Incident
+        from app.models.client import Client
+        from sqlalchemy import select
+
+        async with _async_session() as db:
+            from app.core.tenancy import primary_client
+            client = await primary_client(db)
+            if client:
+                title, description = _block_incident_text(ip, reason, blocked)
+                incident = Incident(
+                    client_id=client.id,
+                    title=title,
+                    description=description,
+                    severity="critical",
+                    status="open",
+                    source="attack_detector",
+                    source_ip=ip,
+                    detected_at=datetime.utcnow(),
+                )
+                db.add(incident)
+                await db.flush()
+                if blocked:
+                    await _record_inline_block_action(db, client.id, incident.id, ip, reason)
+                await db.commit()
+                logger.info(
+                    f"[AttackDetector] Created CRITICAL incident for "
+                    f"{'blocked' if blocked else 'unblocked shared-egress'} IP {ip}"
+                )
+    except Exception as e:
+        logger.error(f"[AttackDetector] Failed to create incident: {e}")
+
+
+async def _notify_firewall(ip: str, reason: str):
+    """Notify external firewall to block IP. Runs as fire-and-forget task."""
+    if not FIREWALL_URL:
+        return
+    try:
+        import aiohttp
+        from app.core.firewall_client import firewall_auth_headers
+        from app.services import block_policy
+        payload = {"ip": ip, "reason": f"aegis_auto_block: {reason}"}
+        # Only an AMBIGUOUS detection gets the 1h Pi-side expiry. A confirmed
+        # attack carries no `duration`, which the agent reads as permanent (and
+        # which upgrades any earlier temporary entry for the same IP).
+        if (
+            block_policy.classify(reason).kind != block_policy.CONFIRMED
+            and not block_policy.force_permanent()
+        ):
+            payload["duration"] = 3600
+        async with aiohttp.ClientSession(headers=firewall_auth_headers()) as session:
+            async with session.post(
+                f"{FIREWALL_URL}/block",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=3),
+            ) as resp:
+                # Fire-and-forget on the LATENCY, not on the outcome. The call
+                # stays non-blocking and non-fatal, but an unchecked response
+                # meant a 4xx/5xx from the Pi logged "Firewall notified" while
+                # nothing was enforced remotely — the local 403 middleware kept
+                # working, so the divergence stayed invisible.
+                if resp.status >= 400:
+                    body = (await resp.text())[:200]
+                    logger.warning(
+                        f"[AttackDetector] Firewall REJECTED block for {ip}: "
+                        f"HTTP {resp.status} {body} — enforced locally only"
+                    )
+                else:
+                    # HTTP 200 does not mean enforced: the agent's evidence gate
+                    # answers 200 {"blocked": false, "deferred": true} when it
+                    # declines (see firewall-agent POST /block).
+                    try:
+                        body = await resp.json(content_type=None)
+                    except Exception:
+                        body = None
+                    if isinstance(body, dict) and body.get("blocked") is False:
+                        logger.warning(
+                            f"[AttackDetector] Firewall DEFERRED block for {ip} "
+                            f"(not enforced remotely): "
+                            f"{str(body.get('detail') or body.get('message') or '')[:200]}"
+                        )
+                    else:
+                        logger.info(f"[AttackDetector] Firewall notified to block {ip}")
+    except Exception as e:
+        logger.warning(f"[AttackDetector] Firewall block failed (non-fatal): {e}")
+
+
+async def _share_to_mongo(ip: str, reason: str):
+    """Share blocked IP to MongoDB. Runs as fire-and-forget task."""
+    try:
+        from app.services.threat_intel_hub import threat_intel_hub
+        await threat_intel_hub.share_ioc({
+            "ioc_type": "ip",
+            "ioc_value": ip,
+            "threat_type": reason.split("(")[0].strip() if "(" in reason else reason,
+            "confidence": 0.95,
+            "detection_source": "attack_detector",
+        })
+        logger.info(f"[AttackDetector] Shared blocked IP {ip} to aegis_threats")
+    except Exception as e:
+        logger.debug(f"[AttackDetector] MongoDB share failed (non-fatal): {e}")
+
+
+# Bound on the number of distinct source-IP keys held in `_attack_log`. Each
+# key is one unique attacker IP; under an internet-wide scan the dict would
+# otherwise grow one entry per /32 seen since process start and never shrink,
+# even after the per-IP deque is emptied by age pruning. When the cap is
+# exceeded on insert we evict the coldest (oldest newest-hit) keys.
+_ATTACK_LOG_MAX_KEYS = 50_000
+
+
+def _cap_attack_log() -> None:
+    """LRU-cap `_attack_log` so a scan storm can't grow it without bound.
+
+    Evicts the keys whose most-recent hit is oldest until the map is back under
+    the cap. Empty deques sort oldest (ts 0.0) so they are dropped first. Only
+    touches IDLE keys — an IP still inside its BLOCK_WINDOW keeps a recent
+    timestamp and is retained, so active-attacker detection is unaffected.
+    """
+    over = len(_attack_log) - _ATTACK_LOG_MAX_KEYS
+    if over <= 0:
+        return
+    victims = sorted(
+        _attack_log.items(),
+        key=lambda kv: (kv[1][-1][0] if kv[1] else 0.0),
+    )[:over]
+    for key, _ in victims:
+        _attack_log.pop(key, None)
+
+
+def sweep_attack_log(now: Optional[float] = None) -> int:
+    """Evict IDLE keys from `_attack_log` (module-level per-IP tracker).
+
+    Removes any key whose deque is empty OR whose newest hit is older than
+    BLOCK_WINDOW (300s) — i.e. IPs that have gone silent. This is the fix for
+    the rank-2 leak: previously the deque contents were pruned by age on access
+    but the empty deque (dict key) was never removed, so the map grew one entry
+    per unique attacker IP forever. Handles both 'ip' and 'bf:ip' key variants.
+    Safe to call from a periodic background task; returns keys evicted.
+    """
+    if now is None:
+        now = time.time()
+    cutoff = now - BLOCK_WINDOW
+    stale = []
+    for key, q in _attack_log.items():
+        # bf: entries use a 60s window but BLOCK_WINDOW (300s) is a safe upper
+        # bound — anything older than 300s is idle under either window.
+        if not q or q[-1][0] < cutoff:
+            stale.append(key)
+    for key in stale:
+        _attack_log.pop(key, None)
+    # Hard cap backstop in case a burst outran the sweep.
+    _cap_attack_log()
+    return len(stale)
+
+
+async def attack_log_sweeper(interval_s: int = 60) -> None:
+    """Background coroutine: periodically sweep idle keys from `_attack_log`.
+
+    Started from the FastAPI lifespan in main.py. Runs until cancelled.
+    """
+    while True:
+        try:
+            await asyncio.sleep(interval_s)
+            evicted = sweep_attack_log()
+            if evicted:
+                logger.debug(f"[AttackDetector] swept {evicted} idle IP keys from _attack_log")
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(f"[AttackDetector] attack_log sweep error: {exc}")
+
+
+def _record_attack(ip: str, pattern_name: str) -> bool:
+    """Record an attack. Returns True if IP should be blocked."""
+    now = time.time()
+    cutoff = now - BLOCK_WINDOW
+    q = _attack_log[ip]
+    # Prune old entries
+    while q and q[0][0] < cutoff:
+        q.popleft()
+    q.append((now, pattern_name))
+
+    _stats["total_detections"] += 1
+    _stats["detections_by_type"][pattern_name] += 1
+
+    # Backstop cap: bound the number of tracked IP keys.
+    if len(_attack_log) > _ATTACK_LOG_MAX_KEYS:
+        _cap_attack_log()
+
+    return len(q) >= BLOCK_THRESHOLD
+
+
+def _record_timing(elapsed_ns: int):
+    """Record detection timing in microseconds for stats."""
+    us = elapsed_ns // 1000
+    _stats["last_detection_us"] = us
+    n = _stats["detection_samples"]
+    if n == 0:
+        _stats["avg_detection_us"] = float(us)
+    else:
+        # Exponential moving average (alpha=0.1) to avoid unbounded memory
+        _stats["avg_detection_us"] = _stats["avg_detection_us"] * 0.9 + us * 0.1
+    _stats["detection_samples"] = n + 1
+
+
+# ---------------------------------------------------------------------------
+# Middleware
+# ---------------------------------------------------------------------------
+
+class AttackDetectorMiddleware(BaseHTTPMiddleware):
+    """Real-time attack detection middleware.
+
+    Runs BEFORE every request. Optimized hot path:
+    1. Blocked IP check (instant O(1) set lookup)
+    2. Fast-path skip for health/internal endpoints
+    3. Safe IP skip
+    4. Mega-regex on path+query only (lazy body read)
+    5. Body read only if path+query clean and method is POST/PUT/PATCH
+    6. Fire-and-forget for DB/firewall/Mongo on block (non-blocking)
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        t0 = time.perf_counter_ns()
+
+        # ---- OPTIMIZATION 4: Blocked IP as ABSOLUTE FIRST check ----
+        # Local import to avoid a circular import: dos_middleware imports
+        # _is_safe_ip/SKIP_PATHS from this module at module load time.
+        from app.core.dos_middleware import _client_ip
+        ip = _client_ip(request)
+
+        if ip in _blocked_ips:
+            return _blocked_response()
+
+        # ---- OPTIMIZATION 2: Fast-path skip for safe endpoints ----
+        path = request.url.path
+        if path in SKIP_PATHS:
+            return await call_next(request)
+
+        # Skip safe IPs entirely (shared-cloud IPs need UA + verified rDNS)
+        user_agent = request.headers.get("user-agent", "")
+        if _is_safe_ip(ip, user_agent):
+            return await call_next(request)
+
+        # v1.6.4: Skip benign-UA bots entirely (crawlers / monitors with
+        # rotating IPs that publish stable UAs). Equivalent to a safelist
+        # bypass but matched by User-Agent instead of source IP. Not applied to
+        # shared cloud ranges: there a UA is trivially spoofable, and the
+        # verified case was already handled by _is_safe_ip above.
+        if user_agent and _check_benign_ua(user_agent) and not _is_shared_cloud_ip(ip):
+            _record_timing(time.perf_counter_ns() - t0)
+            return await call_next(request)
+
+        # ---- OPTIMIZATION 5: Scanner UA via frozenset (no regex) ----
+        if user_agent and _check_scanner_ua(user_agent):
+            should_block = _record_attack(ip, "scanner")
+            logger.warning(
+                f"[DETECT] scanner UA from {ip}: {user_agent[:80]}"
+            )
+            if should_block:
+                await _block_ip(ip, f"scanner User-Agent: {user_agent[:60]}")
+            _record_timing(time.perf_counter_ns() - t0)
+            if should_block:
+                return _blocked_response()
+
+        # ---- Brute force detection: rapid POST to auth endpoints ----
+        method = request.method
+        if method == "POST" and any(p in path for p in _AUTH_PATHS):
+            now_ts = time.time()
+            bf_key = f"bf:{ip}"
+            bf_q = _attack_log.get(bf_key)
+            if bf_q is None:
+                bf_q = deque()
+                _attack_log[bf_key] = bf_q
+            cutoff = now_ts - 60  # 1 minute window
+            while bf_q and bf_q[0][0] < cutoff:
+                bf_q.popleft()
+            bf_q.append((now_ts, "brute_force"))
+            if len(bf_q) >= 5:  # 5 auth attempts in 1 min = brute force
+                should_block = _record_attack(ip, "brute_force")
+                logger.warning(
+                    f"[DETECT] HIGH brute_force from {ip} "
+                    f"path={path} attempts={len(bf_q)}"
+                )
+                if should_block:
+                    await _block_ip(ip, f"brute_force ({len(bf_q)} attempts)")
+                    _record_timing(time.perf_counter_ns() - t0)
+                    return _blocked_response()
+
+        # ---- Build check text: path + query (decoded) + UA ----
+        decoded_path = _double_decode(path)
+        raw_query = request.url.query
+        decoded_query = _double_decode(raw_query) if raw_query else ""
+        check_text = f"{decoded_path} {decoded_query} {user_agent}"
+
+        # ---- Breadcrumb credential detection (static + dynamic) ----
+        _breadcrumb_hit = False
+        for crumb in BREADCRUMB_INDICATORS:
+            if crumb in check_text:
+                _breadcrumb_hit = True
+                break
+        if not _breadcrumb_hit:
+            for pat in BREADCRUMB_PATTERNS:
+                if pat.search(check_text):
+                    _breadcrumb_hit = True
+                    break
+        if _breadcrumb_hit:
+            should_block = _record_attack(ip, "breadcrumb_credential_used")
+            logger.critical(
+                f"[DETECT] BREADCRUMB credential used by {ip} "
+                f"path={path} method={method}"
+            )
+            if should_block:
+                await _block_ip(ip, "breadcrumb_credential_used (critical)")
+                _record_timing(time.perf_counter_ns() - t0)
+                return _blocked_response()
+
+        # ---- OPTIMIZATION 1+3: Mega-regex with lazy body reading ----
+        match_result = _check_mega(check_text)
+
+        # Only read body if path+query was clean AND method is mutation
+        if (
+            not match_result
+            and method in _MUTATION_METHODS
+            and not _skip_body_inspection(path, request.headers)
+        ):
+            try:
+                body_bytes = await request.body()
+                if body_bytes and len(body_bytes) < 65536:  # max 64KB
+                    body_text = _double_decode(
+                        body_bytes.decode("utf-8", errors="ignore")
+                    )
+                    # Check breadcrumbs in body too (static + dynamic)
+                    _body_crumb = False
+                    for crumb in BREADCRUMB_INDICATORS:
+                        if crumb in body_text:
+                            _body_crumb = True
+                            break
+                    if not _body_crumb:
+                        for pat in BREADCRUMB_PATTERNS:
+                            if pat.search(body_text):
+                                _body_crumb = True
+                                break
+                    if _body_crumb:
+                        should_block = _record_attack(ip, "breadcrumb_credential_used")
+                        logger.critical(
+                            f"[DETECT] BREADCRUMB credential in body from {ip} "
+                            f"path={path} method={method}"
+                        )
+                        if should_block:
+                            await _block_ip(ip, "breadcrumb_credential_used (critical)")
+                            _record_timing(time.perf_counter_ns() - t0)
+                            return _blocked_response()
+                    # Mega-regex on body
+                    match_result = _check_mega(body_text)
+            except Exception:
+                pass
+
+        if match_result:
+            name, severity = match_result
+            should_block = _record_attack(ip, name)
+
+            logger.warning(
+                f"[DETECT] {severity.upper()} {name} from {ip} "
+                f"path={path} method={method}"
+            )
+
+            if should_block:
+                await _block_ip(ip, f"{name} ({severity})")
+                _record_timing(time.perf_counter_ns() - t0)
+                return _blocked_response()
+
+        # ---- Configurable firewall rule engine (augments hardcoded checks) ----
+        # Uses the sync cache-only path so the detector stays fast. The cache
+        # is primed asynchronously by the firewall_engine loader on first hit
+        # or via CRUD invalidation.
+        try:
+            from app.services.firewall_engine import firewall_engine as _fw
+
+            event = {
+                "source_ip": ip,
+                "path": path,
+                "method": method,
+                "user_agent": user_agent,
+                "protocol": "http",
+                "port": request.url.port or 0,
+                "event_type": "http_request",
+            }
+            fw_matches = _fw.evaluate_all_sync(event)
+            if fw_matches:
+                # Highest priority match wins
+                top = fw_matches[0]
+                if top.action == "allow":
+                    _record_timing(time.perf_counter_ns() - t0)
+                    return await call_next(request)
+                if top.action in ("block_ip", "quarantine_host"):
+                    _record_attack(ip, f"fw_rule:{top.rule_name}")
+                    await _block_ip(ip, f"firewall_rule:{top.rule_name}")
+                    _record_timing(time.perf_counter_ns() - t0)
+                    return _blocked_response()
+                if top.action == "alert":
+                    logger.warning(
+                        f"[FW-RULE] {top.rule_name} alert from {ip} path={path}"
+                    )
+        except Exception as exc:
+            # Never fail the request because of rule engine errors
+            logger.debug(f"[AttackDetector] firewall_engine skipped: {exc}")
+
+        # Record timing for clean requests too
+        _record_timing(time.perf_counter_ns() - t0)
+
+        # Continue to next middleware / route handler
+        return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Public API for admin endpoints
+# ---------------------------------------------------------------------------
+
+def get_blocked_ips() -> list[str]:
+    """Return sorted list of all blocked IPs."""
+    return sorted(_blocked_ips)
+
+
+def unblock_ip(ip: str) -> bool:
+    """Remove an IP from the blocked set. Returns True if it was blocked."""
+    was_blocked = ip in _blocked_ips
+    _blocked_ips.discard(ip)
+    # Also remove from ip_blocker_service
+    try:
+        from app.core.ip_blocker import ip_blocker_service
+        ip_blocker_service.unblock_ip(ip)
+    except Exception:
+        pass
+    # Rewrite file without this IP
+    try:
+        if BLOCKED_IPS_FILE.exists():
+            lines = BLOCKED_IPS_FILE.read_text().splitlines()
+            filtered = [l for l in lines if l.strip() != ip]
+            atomic_write_text(BLOCKED_IPS_FILE, "\n".join(filtered) + "\n")
+    except Exception:
+        pass
+    return was_blocked
+
+
+def get_stats() -> dict:
+    """Return detection statistics including timing."""
+    return {
+        "total_detections": _stats["total_detections"],
+        "total_blocks": _stats["total_blocks"],
+        "blocked_ips_count": len(_blocked_ips),
+        "detections_by_type": dict(_stats["detections_by_type"]),
+        "last_detection_us": _stats["last_detection_us"],
+        "avg_detection_us": round(_stats["avg_detection_us"], 1),
+        "detection_samples": _stats["detection_samples"],
+    }

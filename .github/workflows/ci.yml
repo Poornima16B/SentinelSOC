@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # Public-repo guard (server side, cannot be skipped from a laptop)
+  #
+  # This repository is public. The pre-commit hook is local config
+  # (core.hooksPath is never cloned) and `git commit --no-verify` skips it, so
+  # on its own it cannot stop a leak. This job re-runs the same checks against
+  # the tracked tree on the runner. It reads only the checked-out commit (no
+  # history scan), so it finishes in a couple of seconds. It fails when any of
+  # these is tracked:
+  #   - an agent/assistant file: CLAUDE.md, AGENTS.md, MEMORY.md, GEMINI.md
+  #     (any depth, any letter case), anything under a .claude/ directory, or
+  #     .claude.json
+  #   - a real env file: .env or .env.* (only *.example templates are allowed)
+  #   - an infrastructure identifier SHAPE: a home path (/Users/<name>/,
+  #     /home/<name>/), a Tailscale-range host address (100.64.0.0/10), or a
+  #     non-default 192.168.x.y LAN address
+  # The shapes and the allow-list of documentation values live in
+  # scripts/git-hooks/pre-commit (one definition for the hook and for CI); the
+  # failure output names each offending path and line and says what to remove.
+  # This file stays free of real identifiers: specific names live only in each
+  # maintainer's untracked ~/.aegis-private-patterns.
+  # ------------------------------------------------------------------
+  public-repo-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse private files and infrastructure identifiers
+        run: bash scripts/git-hooks/pre-commit --tracked
+
+  # ------------------------------------------------------------------
+  # Lint backend (ruff)
+  # ------------------------------------------------------------------
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        run: |
+          cd backend
+          ruff check app/ --select E,F,W --ignore E501 --exit-zero
+
+  # ------------------------------------------------------------------
+  # Backend unit tests (pytest)
+  # ------------------------------------------------------------------
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: |
+          cd backend
+          # `python -m pytest` (not the bare `pytest` script) so the cwd
+          # (backend/) is prepended to sys.path — tests/unit/ has an
+          # __init__.py but tests/ itself doesn't, which defeats pytest's
+          # own rootdir insertion and makes `app.*` imports fail otherwise.
+          python -m pytest tests/unit tests/integration -q
+
+  # ------------------------------------------------------------------
+  # Frontend build
+  # ------------------------------------------------------------------
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+
+  # ------------------------------------------------------------------
+  # Docker compose validation
+  # ------------------------------------------------------------------
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify compose config
+        # The compose file refuses to render without these two secrets (it has
+        # no defaults on purpose). CI only validates the file, so throwaway
+        # values are enough; they are never used to start anything.
+        env:
+          AEGIS_SECRET_KEY: ci-placeholder-not-a-secret
+          AEGIS_ADMIN_PASSWORD: ci-placeholder-not-a-secret
+        run: docker compose config --quiet
+
+      - name: Compose must refuse to render without its secrets
+        run: |
+          if docker compose config --quiet 2>/dev/null; then
+            echo "docker-compose.yml rendered without AEGIS_SECRET_KEY / AEGIS_ADMIN_PASSWORD" >&2
+            exit 1
+          fi

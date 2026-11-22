@@ -1,0 +1,19 @@
+id: sigma_c2_encoded_powershell
+name: Encoded PowerShell Execution
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- Execution
+techniques:
+- T1059.001
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    cmdline_regex: (?i)^\s*(?:"[^"]*[\\/]|'[^']*[\\/]|[^\s"']*[\\/])?(powershell|pwsh)(\.exe)?["']?(?=\s).*(\s-e(nc\w*|c)?\s+[A-Za-z0-9+/=]{12,}|frombase64string)
+entityMappings:
+- type: IP
+  field: source_ip
+description: PowerShell execution with encoded command suggesting C2 stager.

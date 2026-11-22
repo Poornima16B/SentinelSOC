@@ -1,0 +1,27 @@
+id: sigma_lateral_wmi_exec
+name: WMI Remote Execution
+kind: sigma
+severity: high
+enabled: false
+tactics:
+- LateralMovement
+techniques:
+- T1047
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    parent_process: wmiprvse.exe
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): filters on the PARENT process (parent_process
+  = wmiprvse.exe). Endpoint agents send `ppid` only, never the parent's name
+  or path, and the backend does not resolve it before evaluation. To revive
+  it, have the agent send parent_name/parent_path with process_start (or
+  resolve ppid against the stored process tree in edr_events), then set
+  `enabled: true`.
+
+  Remote process creation via WMI detected.

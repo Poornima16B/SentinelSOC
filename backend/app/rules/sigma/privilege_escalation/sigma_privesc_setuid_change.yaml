@@ -1,0 +1,19 @@
+id: sigma_privesc_setuid_change
+name: SUID/SGID Bit Modified
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- PrivilegeEscalation
+techniques:
+- T1548.001
+data_sources:
+- edr
+condition:
+  event_type: process_creation
+  filter:
+    cmdline_regex: (?i)\bchmod\s+(-\S+\s+)*([ugoa]*\+[rwxXt]*s|[2467][0-7]{3}\b)
+entityMappings:
+- type: IP
+  field: source_ip
+description: File permissions changed to add SUID or SGID bit.

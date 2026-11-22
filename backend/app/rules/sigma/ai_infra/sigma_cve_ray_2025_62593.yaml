@@ -1,0 +1,30 @@
+id: sigma_cve_ray_2025_62593
+name: Ray Exploitation Attempt (CVE-2025-62593)
+kind: sigma
+severity: critical
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- http_logs
+condition:
+  event_type: http_request
+  filter:
+    path_contains:
+    - /api/job_agent/jobs
+  count_threshold: 10
+  time_window_seconds: 300
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'Detects attempted exploitation of CVE-2025-62593 in Ray (CVSS 9.8). Matches
+  only /api/job_agent/jobs, Ray''s job-submission endpoint. The fragment /api/jobs was removed
+  after a replay over 145,831 real requests: it matched /api/jobs/production-hourly and /api/jobs/incentive
+  on the WilabIA dashboard and produced 313 critical incidents against two legitimate IPs
+  in ten days, each of which would have been an autonomous block. Removing it cost nothing:
+  0 real hits after, and Ray''s own endpoint is still covered.'
+references:
+- https://github.com/advisories/GHSA-q279-jhrf-cc6v

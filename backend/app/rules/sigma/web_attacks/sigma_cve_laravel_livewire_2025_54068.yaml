@@ -1,0 +1,27 @@
+id: sigma_cve_laravel_livewire_2025_54068
+name: Laravel Livewire Exploitation Attempt (CVE-2025-54068)
+kind: sigma
+severity: low
+enabled: true
+tactics:
+- InitialAccess
+techniques:
+- T1190
+data_sources:
+- http_logs
+condition:
+  event_type: http_request
+  filter:
+    path_contains:
+    - /livewire/update
+  count_threshold: 10
+  time_window_seconds: 300
+  group_by: source_ip
+entityMappings:
+- type: IP
+  field: source_ip
+description: 'Detects attempted exploitation of CVE-2025-54068 in Laravel Livewire (CVSS 9.2). Demoted
+  to low (alert-only): /livewire/update is the endpoint every Livewire component uses for every interaction,
+  so ten requests in five minutes is normal use of any Livewire app. The payload is in the body.'
+references:
+- https://github.com/livewire/livewire/security/advisories/GHSA-29cq-5w36-x7w3

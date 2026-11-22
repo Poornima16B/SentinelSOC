@@ -1,0 +1,365 @@
+import logging
+import os
+from typing import Optional
+
+import httpx
+
+from app.config import settings
+
+logger = logging.getLogger("aegis.firewall_client")
+
+FIREWALL_API = (settings.AEGIS_FIREWALL_URL or "").rstrip("/")
+TIMEOUT = 30.0
+
+
+def get_firewall_secret() -> str:
+    """Resolve AEGIS_FIREWALL_SECRET: pydantic Settings first (backend/.env
+    only lands there), then os.environ (systemd/PM2 env)."""
+    return (
+        getattr(settings, "AEGIS_FIREWALL_SECRET", "") or os.getenv("AEGIS_FIREWALL_SECRET", "")
+    ).strip()
+
+
+def firewall_auth_headers() -> dict:
+    """Auth header for ANY call to the Pi agent. Use this from every caller."""
+    return {"X-AEGIS-FW-Auth": get_firewall_secret()}
+
+
+def _auth_headers() -> dict:
+    """Shared-secret header attached to every request sent to the Pi agent.
+
+    Set AEGIS_FIREWALL_SECRET (same value on Mac Pro and the Pi) to
+    authenticate the Mac Pro <-> Pi firewall channel. If unset here, an
+    empty string is sent — the agent runs in optional-accept mode until
+    AEGIS_FIREWALL_SECRET is configured on both sides (see
+    firewall-agent/main.py for the enforcement/compat behavior).
+    """
+    return firewall_auth_headers()
+
+
+class FirewallClient:
+    """Async HTTP client for an external firewall API.
+
+    Set AEGIS_FIREWALL_URL to the full base URL of your firewall's API
+    (e.g., http://firewall.local:8000/api). The firewall must expose:
+    /status, /block, /blocked, /attackers, /analyze, /events, etc.
+
+    If AEGIS_FIREWALL_URL is not set, all methods return graceful errors
+    and local middleware blocking is used instead.
+
+    Every request carries the X-AEGIS-FW-Auth shared-secret header (see
+    _auth_headers()) so the Pi agent can authenticate the caller.
+    """
+
+    async def get_status(self) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/status")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall get_status failed: {e}")
+            return {"error": str(e), "firewall_online": False}
+
+    async def get_attackers(self) -> list:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/attackers")
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("attackers", data) if isinstance(data, dict) else data
+        except Exception as e:
+            logger.warning(f"Firewall get_attackers failed: {e}")
+            return []
+
+    async def get_attacker(self, ip: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/attacker/{ip}")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall get_attacker({ip}) failed: {e}")
+            return {"error": str(e)}
+
+    async def get_blocked_strict(self) -> Optional[list]:
+        """The agent's blocklist, or ``None`` when it could not be read.
+
+        An unreachable agent and an empty blocklist are different facts. Any
+        caller that REMOVES state based on what the agent lacks (eviction,
+        incident auto-resolve) must use this and do nothing on ``None``.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/blocked")
+                resp.raise_for_status()
+                data = resp.json()
+                blocked = data.get("blocked") if isinstance(data, dict) else None
+                if not isinstance(blocked, list):
+                    logger.warning("Firewall get_blocked: malformed response, treating as unreadable")
+                    return None
+                return blocked
+        except Exception as e:
+            logger.warning(f"Firewall get_blocked failed: {e}")
+            return None
+
+    async def get_blocked(self) -> list:
+        """Blocklist for display. Returns ``[]`` on error: never use this to
+        decide that something is NOT blocked (see ``get_blocked_strict``)."""
+        return await self.get_blocked_strict() or []
+
+    async def block_ip(
+        self,
+        ip: str,
+        *,
+        reason: Optional[str] = None,
+        threat_type: Optional[str] = None,
+        severity: Optional[str] = None,
+        force: bool = False,
+    ) -> dict:
+        """Ask the Pi agent to block `ip`.
+
+        The Pi's evidence gate DEFERS blocks whose threat text carries no exploit
+        signature and with fewer than BLOCK_MIN_ATTEMPTS sightings, so callers
+        should say why they block (reason/threat_type/severity). `force=True`
+        bypasses the gate for blocks AEGIS already decided (approved response
+        actions, playbooks, operator blocks). Only non-None fields are sent, so
+        `block_ip(ip)` still posts just {"ip": ip}.
+        """
+        payload: dict = {"ip": ip}
+        if reason:
+            payload["reason"] = reason
+        if threat_type:
+            payload["threat_type"] = threat_type
+        if severity:
+            payload["severity"] = str(severity)
+        if force:
+            payload["force"] = True
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(f"{FIREWALL_API}/block", json=payload)
+                resp.raise_for_status()
+                body = resp.json()
+        except Exception as e:
+            logger.error(f"Firewall block_ip({ip}) failed: {e}")
+            return {"success": False, "error": str(e)}
+        # The agent's evidence gate answers HTTP 200 with {"blocked": false,
+        # "deferred": true} when it declines. That is NOT enforcement; reporting
+        # success made operators read "Firewall notified" as "IP is blocked".
+        # Only an explicit blocked=false is a refusal, so an agent that omits
+        # the key (older builds) keeps its current meaning.
+        if isinstance(body, dict) and body.get("blocked") is False:
+            msg = body.get("detail") or body.get("message") or "block not applied"
+            logger.warning(f"Firewall did not block {ip}: {msg}")
+            return {
+                "success": False,
+                "deferred": bool(body.get("deferred")),
+                "error": msg,
+                "response": body,
+            }
+        return {"success": True, "response": body}
+
+    async def unblock_ip(self, ip: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.delete(f"{FIREWALL_API}/block/{ip}")
+                resp.raise_for_status()
+                return {"success": True, "response": resp.json()}
+        except Exception as e:
+            logger.error(f"Firewall unblock_ip({ip}) failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def analyze_ip(self, ip: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(f"{FIREWALL_API}/analyze", json={"ip": ip})
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall analyze_ip({ip}) failed: {e}")
+            return {"error": str(e)}
+
+    async def investigate_ip(self, ip: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(f"{FIREWALL_API}/ai/investigate", json={"ip": ip})
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall investigate_ip({ip}) failed: {e}")
+            return {"error": str(e)}
+
+    async def get_threat_summary(self) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/threat-summary")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall get_threat_summary failed: {e}")
+            return {"error": str(e)}
+
+    async def get_visitors(self, minutes: int = 60) -> list:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/visitors/recent", params={"minutes": minutes})
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("accesses", data) if isinstance(data, dict) else data
+        except Exception as e:
+            logger.warning(f"Firewall get_visitors failed: {e}")
+            return []
+
+    async def get_iptables_rules(self) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/iptables/rules")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall get_iptables_rules failed: {e}")
+            return {"error": str(e)}
+
+    async def get_events(self) -> list:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/events")
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("events", []) if isinstance(data, dict) else data
+        except Exception as e:
+            logger.warning(f"Firewall get_events failed: {e}")
+            return []
+
+    async def get_auto_response_blocked(self) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/auto-response/blocked")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall get_auto_response_blocked failed: {e}")
+            return {"blocked": [], "permanent": [], "temp": []}
+
+    async def chat(self, message: str) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(f"{FIREWALL_API}/ai/chat", json={"message": message})
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall chat failed: {e}")
+            return {"error": str(e)}
+
+    # -----------------------------------------------------------------------
+    # DoS Netshield (network tier) — DEFAULT OFF, gated by AEGIS_DOS_NETSHIELD
+    # -----------------------------------------------------------------------
+    #
+    # These call the Pi firewall-agent /dos/* endpoints (dedicated AEGIS_DOS
+    # iptables chain + sysctl SYN hardening). Every method early-returns a no-op
+    # unless settings.AEGIS_DOS_NETSHIELD is truthy — so nothing touches the Pi
+    # gateway unless an operator has explicitly enabled the network tier. The Pi
+    # endpoints additionally require the X-AEGIS-Netshield: enable header (sent
+    # here) AND their own env gate, and ALWAYS prepend host-safety ACCEPT rules
+    # for the Mac Pro + Tailscale CGNAT before any limit/DROP.
+
+    @staticmethod
+    def _netshield_enabled() -> bool:
+        # getattr keeps this safe even if AEGIS_DOS_NETSHIELD is not yet in
+        # Settings (owner B adds it). Accepts bool True or truthy string.
+        val = getattr(settings, "AEGIS_DOS_NETSHIELD", False)
+        if isinstance(val, str):
+            return val.strip().lower() in ("1", "true", "yes", "on")
+        return bool(val)
+
+    _NETSHIELD_HEADERS = {"X-AEGIS-Netshield": "enable"}
+
+    async def apply_dos_ratelimit(
+        self,
+        ip: str | None = None,
+        rate: int = 50,
+        burst: int = 100,
+        connlimit: int = 100,
+        port: int = 8000,
+    ) -> dict:
+        """Apply per-source SYN hashlimit + connlimit on the Pi (network tier).
+
+        No-op unless AEGIS_DOS_NETSHIELD is truthy. `ip` is accepted for API
+        symmetry/logging; the Pi applies a per-source hashlimit across all
+        sources (the host-safety ACCEPT rules exempt Mac Pro/Tailscale).
+        """
+        if not self._netshield_enabled():
+            return {"success": False, "error": "netshield disabled"}
+        if not FIREWALL_API:
+            return {"success": False, "error": "AEGIS_FIREWALL_URL not set"}
+        payload = {"rate": rate, "burst": burst, "connlimit": connlimit, "port": port}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(
+                    f"{FIREWALL_API}/dos/ratelimit",
+                    json=payload,
+                    headers=self._NETSHIELD_HEADERS,
+                )
+                resp.raise_for_status()
+                return {"success": True, "response": resp.json()}
+        except Exception as e:
+            logger.error(f"Firewall apply_dos_ratelimit failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def harden_synflood(self) -> dict:
+        """Enable SYN cookies + backlog tuning on the Pi (network tier).
+
+        No-op unless AEGIS_DOS_NETSHIELD is truthy. Reversible via revert_dos().
+        """
+        if not self._netshield_enabled():
+            return {"success": False, "error": "netshield disabled"}
+        if not FIREWALL_API:
+            return {"success": False, "error": "AEGIS_FIREWALL_URL not set"}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(
+                    f"{FIREWALL_API}/dos/harden",
+                    headers=self._NETSHIELD_HEADERS,
+                )
+                resp.raise_for_status()
+                return {"success": True, "response": resp.json()}
+        except Exception as e:
+            logger.error(f"Firewall harden_synflood failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def revert_dos(self) -> dict:
+        """FULL rollback of the Pi network tier: remove AEGIS_DOS chain + restore sysctl.
+
+        No-op unless AEGIS_DOS_NETSHIELD is truthy.
+        """
+        if not self._netshield_enabled():
+            return {"success": False, "error": "netshield disabled"}
+        if not FIREWALL_API:
+            return {"success": False, "error": "AEGIS_FIREWALL_URL not set"}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.post(
+                    f"{FIREWALL_API}/dos/revert",
+                    headers=self._NETSHIELD_HEADERS,
+                )
+                resp.raise_for_status()
+                return {"success": True, "response": resp.json()}
+        except Exception as e:
+            logger.error(f"Firewall revert_dos failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def dos_status(self) -> dict:
+        """Read-only Pi netshield state. Safe to call regardless of gate."""
+        if not FIREWALL_API:
+            return {"error": "AEGIS_FIREWALL_URL not set", "available": False}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=_auth_headers()) as client:
+                resp = await client.get(f"{FIREWALL_API}/dos/status")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception as e:
+            logger.warning(f"Firewall dos_status failed: {e}")
+            return {"error": str(e), "available": False}
+
+
+firewall_client = FirewallClient()

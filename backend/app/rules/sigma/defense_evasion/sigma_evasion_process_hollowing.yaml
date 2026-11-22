@@ -1,0 +1,28 @@
+id: sigma_evasion_process_hollowing
+name: Process Hollowing Detected
+kind: sigma
+severity: critical
+enabled: false
+tactics:
+- DefenseEvasion
+techniques:
+- T1055.012
+data_sources:
+- edr
+condition:
+  event_type: process_injection
+  filter:
+    technique: hollowing
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (NEEDS AGENT CHANGE): needs `process_injection` events. No agent
+  sensor reports memory or thread injection: node-tauri's event kinds are
+  process, image load, tcp, file, registry, DNS and AMSI only, and the ETW
+  session subscribes to none of the injection providers. To revive it, add an
+  injection sensor (ETW Threat-Intelligence or Sysmon-style
+  CreateRemoteThread) to the agent and map it in edr_events, then set
+  `enabled: true`.
+
+  Legitimate process unmapped and replaced with malicious code.

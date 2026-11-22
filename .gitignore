@@ -1,0 +1,142 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+*.egg
+
+# Database
+*.db
+*.sqlite3
+
+# Environment: real env files never go in, *.example templates do.
+# (The pre-commit hook and CI refuse real env files by NAME too, because
+# `git add -f` defeats this file.)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Rust/Tauri build
+target/
+Cargo.lock
+# The endpoint agent is an application: its lockfile must be versioned so the
+# shipped .exe/.app builds from the exact dependency set that was tested. With
+# it ignored, every build resolved fresh versions and the agent stopped
+# compiling when sysinfo and chrono changed their APIs.
+!node-tauri/src-tauri/Cargo.lock
+package-lock.json
+
+# Qdrant data
+qdrant_data/
+
+# Runtime
+blocked_ips.txt
+reports/
+
+# Misc
+*.bak
+*.tmp
+docs/superpowers/
+
+# Internal docs (not for public repo)
+AEGIS_CONTEXT.md
+AEGIS_MARKETING.md
+ARCHITECTURE.md
+marketing AEGIS/
+# Internal investigations / agent reports (audits, threat intel, deep-dives)
+investigations/
+langgraph_pentest.py
+deepagent_pentest.py
+deepagent_pentest_v2.py
+deepagent_pentest*.py
+langgraph_pentest*.py
+scripts/deploy_sync.py
+scripts/setup-wizard.py
+*.tsbuildinfo
+
+# macOS metadata (never commit)
+._*
+.DS_Store
+CHANGES.md
+
+# Agent / assistant instruction files and local config. They hold private
+# infrastructure details by definition and must NEVER reach this public repo.
+# This list is only the first barrier: `git add -f` ignores it, so
+# scripts/git-hooks/pre-commit and the CI job refuse these paths by NAME,
+# case-insensitively, at any depth (and anything under a .claude/ directory).
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+MEMORY.md
+GEMINI.md
+.claude/
+.claude.json
+
+# Agent session scratch — working logs, not source (contains request history)
+.agents/
+
+# Local deploy helpers — hardcode SSH user + host IP.
+# The canonical, credential-free procedure lives in the README.
+deploy.py
+deploy.sh
+
+# Same hardcoded SSH user + host IP as deploy.py/deploy.sh
+frontend/scripts/deploy-sync.mjs
+
+# ---------------------------------------------------------------------------
+# Other projects' source. These are separate private products (SID, WilabIA,
+# landing-wilab, Sable) that only ever landed here because AEGIS instruments
+# them. Their business logic does not belong in a public security repo.
+# Allow-list style: ignore pi-deploy wholesale, then re-admit AEGIS's own parts.
+# ---------------------------------------------------------------------------
+pi-deploy/*
+!pi-deploy/aegis-feed/
+!pi-deploy/aegis-firewall/
+!pi-deploy/aegis_honeypot.py
+!pi-deploy/aegis-honeypot.service
+!pi-deploy/README-honeypot.md
+!pi-deploy/newsyslog/
+!pi-deploy/utils/
+!pi-deploy/web-server-logger.py
+
+*.lnk

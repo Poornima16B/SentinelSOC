@@ -1,0 +1,351 @@
+import asyncio
+import logging
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.audit import log_audit
+from app.core.attack_detector import _is_safe_ip, is_shared_egress
+from app.core.events import event_bus
+from app.core.ip_blocker import ip_blocker_service
+from app.core.firewall_client import firewall_client
+from app.models.action import Action
+import app.services.firewall_local as firewall_local
+
+logger = logging.getLogger("cayde6.responder")
+fw_logger = logging.getLogger("aegis.responder.fw")
+
+# Action types whose target is an IP and which must be guarded by AEGIS_SAFE_IPS.
+_IP_TARGET_ACTIONS = frozenset({"block_ip", "firewall_rule", "isolate_host", "network_segment"})
+
+
+class ActiveResponder:
+    """Execute response actions (block IP, isolate host, etc.)."""
+
+    async def execute_action(self, action: Action, db: AsyncSession) -> dict:
+        """Execute an approved response action."""
+        if action.status not in ("approved",):
+            return {"success": False, "error": "Action not approved"}
+
+        # SAFE-IP GUARD: never execute IP-targeted actions against safe IPs
+        # (Googlebot ranges, Tailscale CGNAT, RFC1918, etc.). Even auto-approved
+        # actions go through this check. See AEGIS_SAFE_IPS env var.
+        if action.action_type in _IP_TARGET_ACTIONS and action.target and _is_safe_ip(action.target):
+            logger.warning(
+                f"RESPONDER: Refusing to execute {action.action_type} on safe IP "
+                f"{action.target} (matches AEGIS_SAFE_IPS). action_id={action.id}"
+            )
+            action.status = "skipped_safe_ip"
+            action.result = {"success": False, "skipped": "safe_ip", "target": action.target}
+            action.executed_at = datetime.utcnow()
+            if action.client_id:
+                await log_audit(
+                    db, f"action_{action.action_type}_skipped",
+                    f"{action.action_type} on {action.target} SKIPPED (safe IP)",
+                    client_id=action.client_id,
+                )
+            await db.commit()
+            await event_bus.publish("action_skipped_safe_ip", {
+                "action_id": action.id,
+                "client_id": action.client_id,
+                "action_type": action.action_type,
+                "target": action.target,
+            })
+            return action.result
+
+        executor = self._get_executor(action.action_type)
+        params = action.parameters
+        if action.action_type == "block_ip":
+            # Hand the Pi the context the brain already has (see _block_ip).
+            params = dict(params or {})
+            # Shared-egress blocks run only when a human approved them
+            # (approve_action stamps approved_by); guardrails never auto-approve one.
+            params["operator_approved"] = bool(action.approved_by)
+            params.setdefault(
+                "reason",
+                f"response action {action.action_type}: {(action.ai_reasoning or 'approved by AEGIS')[:200]}",
+            )
+        result = await executor(action.target, params)
+
+        action.status = "executed" if result["success"] else "failed"
+        action.result = result
+        action.executed_at = datetime.utcnow()
+
+        # Audit log for security-relevant actions (especially IP blocks)
+        if action.client_id:
+            await log_audit(
+                db, f"action_{action.action_type}",
+                f"{action.action_type} on {action.target} — {'success' if result['success'] else 'failed'}",
+                client_id=action.client_id,
+            )
+
+        await db.commit()
+
+        await event_bus.publish("action_executed", {
+            "action_id": action.id,
+            "client_id": action.client_id,
+            "incident_id": action.incident_id,
+            "action_type": action.action_type,
+            "target": action.target,
+            "success": result["success"],
+        })
+
+        logger.info(
+            f"Action {action.action_type} on {action.target}: "
+            f"{'success' if result['success'] else 'failed'}"
+        )
+        return result
+
+    async def rollback_action(self, action: Action, db: AsyncSession) -> dict:
+        """Rollback a previously executed action."""
+        if action.status != "executed":
+            return {"success": False, "error": "Action not in executed state"}
+
+        rollback_fn = self._get_rollback(action.action_type)
+        result = await rollback_fn(action.target, action.parameters)
+
+        if result["success"]:
+            action.status = "rolled_back"
+            action.result = {**(action.result or {}), "rollback": result}
+            await db.commit()
+
+        return result
+
+    def _get_executor(self, action_type: str):
+        executors = {
+            "block_ip": self._block_ip,
+            "firewall_rule": self._add_firewall_rule,
+            "isolate_host": self._isolate_host,
+            "kill_process": self._kill_process,
+            "quarantine_file": self._quarantine_file,
+            "revoke_creds": self._revoke_credentials,
+            "disable_account": self._disable_account,
+            "shutdown_service": self._shutdown_service,
+            "network_segment": self._network_segment,
+            "collect_evidence": self._collect_evidence,
+        }
+        return executors.get(action_type, self._generic_action)
+
+    def _get_rollback(self, action_type: str):
+        rollbacks = {
+            "block_ip": self._unblock_ip,
+            "firewall_rule": self._remove_firewall_rule,
+            "isolate_host": self._unisolate_host,
+        }
+        return rollbacks.get(action_type, self._generic_rollback)
+
+    # Action executors -- these produce structured results.
+    # In production, these would call iptables/firewalld/API.
+    # For safety, they log intent rather than making system changes directly.
+
+    async def _block_ip(self, target: str, params: dict) -> dict:
+        if not target:
+            logger.warning("RESPONSE: block_ip called with empty target, skipping")
+            return {"success": False, "action": "block_ip", "target": target, "error": "No target IP"}
+
+        # Defense in depth: even if a caller bypasses execute_action() guard,
+        # never block a safe IP at the _block_ip level.
+        if _is_safe_ip(target):
+            logger.warning(f"RESPONSE: Refusing to block safe IP {target} (AEGIS_SAFE_IPS)")
+            return {"success": False, "action": "block_ip", "target": target, "skipped": "safe_ip"}
+
+        # Defence in depth behind guardrails: an alert-only authored rule never
+        # blocks unless an operator approved the action.
+        from app.services import authored_rules_registry as _authored
+        _rid = (params or {}).get("rule_id") or (params or {}).get("pattern")
+        if isinstance(_rid, str) and _authored.is_alert_only(_rid) and not (params or {}).get("operator_approved"):
+            logger.warning(f"RESPONSE: Refusing to block {target}: rule {_rid} is alert-only (needs operator approval)")
+            return {"success": False, "action": "block_ip", "target": target, "skipped": "alert_only_rule"}
+
+        # Shared consumer egress is never auto-blocked (see attack_detector
+        # _SHARED_EGRESS_NETWORKS); a human-approved action is the override.
+        operator_approved = bool((params or {}).get("operator_approved"))
+        if is_shared_egress(target) and not operator_approved:
+            logger.warning(
+                f"RESPONSE: Refusing to auto-block shared-egress IP {target} "
+                f"(needs operator approval)"
+            )
+            return {"success": False, "action": "block_ip", "target": target, "skipped": "shared_egress"}
+
+        logger.warning(f"RESPONSE: Blocking IP {target} — executing real block")
+
+        # 1. Block via external firewall (if AEGIS_FIREWALL_URL is configured)
+        # force=True: the action already passed guardrails/approval, so the Pi's
+        # evidence gate must not second-guess it.
+        params = params or {}
+        firewall_result = await firewall_client.block_ip(
+            target,
+            reason=params.get("reason") or params.get("rule_id") or params.get("incident_title"),
+            threat_type=params.get("threat_type"),
+            severity=params.get("severity"),
+            force=True,
+        )
+        logger.info(f"Firewall block result for {target}: {firewall_result}")
+
+        # 2. Block locally via ip_blocker_service (blocked_ips.txt + in-memory set → 403 middleware)
+        local_result = ip_blocker_service.block_ip(target, force=operator_approved)
+        logger.info(f"Local block result for {target}: {local_result}")
+
+        # 3. System-level firewall (pfctl / iptables) — gated by AEGIS_REAL_FW=1
+        try:
+            _fw = firewall_local.get_firewall()
+            fw_ok = _fw.block(target)
+            if fw_ok:
+                fw_logger.info(f"System firewall blocked {target} successfully")
+            elif not getattr(_fw, "available", True):
+                pass  # layer disabled (one warning already logged); no per-block spam
+            else:
+                fw_logger.warning(f"System firewall block returned False for {target} (non-fatal)")
+        except Exception as e:
+            fw_logger.error(f"System firewall block raised for {target}: {e} (non-fatal, continuing)")
+            fw_ok = False
+
+        # Report success only when a layer actually took the block. This used to
+        # return success:True unconditionally, so a block that failed on every
+        # layer still recorded as "executed" — the dashboard showed an IP
+        # contained that was never contained anywhere.
+        def _ok(result) -> bool:
+            return bool(isinstance(result, dict) and result.get("success"))
+
+        blocked_anywhere = _ok(firewall_result) or _ok(local_result) or bool(fw_ok)
+        if not blocked_anywhere:
+            logger.error(
+                f"RESPONSE: block_ip {target} FAILED on every layer — "
+                f"firewall={firewall_result}, local={local_result}, system_fw={fw_ok}"
+            )
+
+        return {
+            "success": blocked_anywhere,
+            "action": "block_ip",
+            "target": target,
+            "firewall": firewall_result,
+            "local": local_result,
+            "system_fw": fw_ok,
+        }
+
+    async def _unblock_ip(self, target: str, params: dict) -> dict:
+        logger.info(f"ROLLBACK: Unblocking IP {target}")
+
+        # 1. Pi executor first: it is the enforced layer. If it refuses we stop
+        #    and report failure, so the action stays "executed" and the block
+        #    keeps its expiry instead of being orphaned as "rolled_back".
+        from app.config import settings as _settings
+        firewall_result = None
+        if _settings.AEGIS_FIREWALL_URL:
+            firewall_result = await firewall_client.unblock_ip(target)
+            if not (isinstance(firewall_result, dict) and firewall_result.get("success")):
+                logger.error(f"ROLLBACK: Pi did not unblock {target}: {firewall_result}")
+                return {"success": False, "action": "unblock_ip", "target": target,
+                        "firewall": firewall_result,
+                        "error": "The firewall agent did not lift the block; nothing was changed locally."}
+
+        # 2. Local 403 blocklist (blocked_ips.txt + in-memory set)
+        try:
+            local_result = ip_blocker_service.unblock_ip(target)
+        except Exception as e:
+            logger.error(f"ROLLBACK: local unblock of {target} raised: {e}")
+            return {"success": False, "action": "unblock_ip", "target": target,
+                    "firewall": firewall_result, "error": f"local unblock failed: {e}"}
+
+        # 3. System-level unblock — gated by AEGIS_REAL_FW=1
+        try:
+            _fw = firewall_local.get_firewall()
+            fw_ok = _fw.unblock(target)
+            if fw_ok:
+                fw_logger.info(f"System firewall unblocked {target} successfully")
+            elif not getattr(_fw, "available", True):
+                pass  # layer disabled (one warning already logged)
+            else:
+                fw_logger.warning(f"System firewall unblock returned False for {target} (non-fatal)")
+        except Exception as e:
+            fw_logger.error(f"System firewall unblock raised for {target}: {e} (non-fatal)")
+            fw_ok = False
+
+        return {
+            "success": True,
+            "action": "unblock_ip",
+            "target": target,
+            "firewall": firewall_result,
+            "local": local_result,
+            "system_fw": fw_ok,
+        }
+
+    async def _add_firewall_rule(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: firewall_rule requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "firewall_rule", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _remove_firewall_rule(self, target: str, params: dict) -> dict:
+        return {"success": False, "status": "not_implemented",
+                "action": "remove_firewall_rule", "target": target,
+                "detail": "No firewall rule was added by AEGIS, so there is nothing to remove."}
+
+    async def _isolate_host(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: isolate_host requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "isolate_host", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _unisolate_host(self, target: str, params: dict) -> dict:
+        return {"success": False, "status": "not_implemented",
+                "action": "unisolate_host", "target": target,
+                "detail": "isolate_host is not implemented, so there is nothing to undo."}
+
+    async def _kill_process(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: kill_process requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "kill_process", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _quarantine_file(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: quarantine_file requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "quarantine_file", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _revoke_credentials(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: revoke_creds requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "revoke_creds", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _disable_account(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: disable_account requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "disable_account", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _shutdown_service(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: shutdown_service requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "shutdown_service", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _network_segment(self, target: str, params: dict) -> dict:
+        logger.info("RESPONSE: network_segment requested for %s (not implemented)", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "network_segment", "target": target,
+                "detail": "This response action is not yet implemented; no system change was made."}
+
+    async def _collect_evidence(self, target: str, params: dict) -> dict:
+        # Record-only: the evidence is the incident and its raw alert, which are
+        # already stored. Nothing is changed on any system, and saying so is
+        # more useful than a bare "success".
+        return {"success": True, "action": "collect_evidence", "target": target,
+                "detail": "Evidence is retained on the incident record; no system change was made."}
+
+    async def _generic_action(self, target: str, params: dict) -> dict:
+        # An unknown action type used to report success while doing nothing,
+        # which the dashboard showed as a threat contained.
+        logger.warning("RESPONSE: unknown action type for %s; nothing was done", target)
+        return {"success": False, "status": "not_implemented",
+                "action": "generic", "target": target,
+                "detail": "Unknown response action type; no system change was made."}
+
+    async def _generic_rollback(self, target: str, params: dict) -> dict:
+        return {"success": False, "error": "No rollback available for this action type"}
+
+
+active_responder = ActiveResponder()

@@ -1,0 +1,31 @@
+id: sigma_web_csrf
+name: CSRF Attack Detected
+kind: sigma
+severity: medium
+enabled: false
+tactics:
+- InitialAccess
+techniques:
+- T1189
+data_sources:
+- pm2
+- web_log
+condition:
+  event_type: web_request
+  count_threshold: 5
+  time_window_seconds: 120
+  group_by: source_ip
+  filter:
+    csrf_valid: false
+    method: POST
+entityMappings:
+- type: IP
+  field: source_ip
+description: |
+  DISABLED (unfeedable in this deployment): this rule is filed under a reachable
+  event type (`web_request`) but filters on `csrf_valid`, which no producer
+  populates (access logs carry no CSRF state), so its filter can never match. To
+  revive it, add an application-side envelope reporting CSRF validation, then
+  set `enabled: true`.
+
+  Cross-site request forgery detected via missing/invalid CSRF token.

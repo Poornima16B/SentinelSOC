@@ -1,0 +1,878 @@
+"""
+Multi-provider AI adapter for AEGIS.
+
+Defines the abstract AIProvider interface and concrete implementations
+for OpenRouter, Anthropic, OpenAI, and Ollama.
+All providers return responses in a unified format compatible with the
+existing openrouter_client.query() return shape:
+  {
+    "content": str,
+    "tokens_used": int,
+    "cost_usd": float,
+    "latency_ms": int,
+    "model_used": str,
+    "task_type": str,
+  }
+"""
+
+import json
+import time
+import logging
+from abc import ABC, abstractmethod
+from typing import Optional
+
+import httpx
+
+logger = logging.getLogger("aegis.ai_providers")
+
+
+# ---------------------------------------------------------------------------
+# Abstract base
+# ---------------------------------------------------------------------------
+
+class AIProvider(ABC):
+    """Common interface every AI backend must implement."""
+
+    @abstractmethod
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        """Send a chat-completion request.
+
+        Returns a dict with at least:
+          content, tokens_used, cost_usd, latency_ms
+        """
+        ...
+
+    @abstractmethod
+    async def get_models(self) -> list[dict]:
+        """Return available models as [{"id": ..., "name": ...}, ...]."""
+        ...
+
+    @abstractmethod
+    def get_name(self) -> str:
+        """Human-readable provider name."""
+        ...
+
+    async def test_connection(self) -> dict:
+        """Quick connectivity check. Returns {"ok": bool, "detail": str}."""
+        try:
+            models = await self.get_models()
+            return {
+                "ok": True,
+                "detail": f"{len(models)} model(s) available",
+                "models_count": len(models),
+            }
+        except Exception as exc:
+            return {"ok": False, "detail": str(exc)}
+
+    async def close(self):
+        """Release underlying HTTP resources (optional override)."""
+        pass
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter
+# ---------------------------------------------------------------------------
+
+class OpenRouterProvider(AIProvider):
+    """OpenRouter (500+ models via single API key)."""
+
+    def __init__(self, api_key: str = "", base_url: str = "https://openrouter.ai/api/v1"):
+        self.api_key = api_key
+        self.base_url = base_url
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=120.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "openrouter"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        if not self.api_key:
+            # Raise so ai_manager skips this provider and falls through to
+            # the next one in the chain. Returning a successful stub here
+            # caused ai_summary to display "OpenRouter API key not configured"
+            # text in the UI instead of triggering the fallback.
+            raise RuntimeError("openrouter: no api_key configured")
+
+        if "groq.com" in self.base_url:
+            model = "openai/gpt-oss-120b"
+        else:
+            model = model or "openai/gpt-oss-20b:free"
+        client = await self._get_client()
+        start = time.time()
+
+        resp = await client.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "User-Agent": "SentinelSOC/1.0",
+                "HTTP-Referer": "http://localhost:3000",
+                "X-Title": "SentinelSOC Defense Platform",
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                # Explicit non-streaming: OpenRouter defaults to this anyway, but
+                # an OmniRoute gateway (OmniRouteProvider) defaults to SSE and
+                # would break resp.json() below without it.
+                "stream": False,
+            },
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"OpenRouter returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+
+        return {
+            "content": content,
+            "tokens_used": usage.get("total_tokens", 0),
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+        }
+
+    async def get_models(self) -> list[dict]:
+        client = await self._get_client()
+        if not self.api_key:
+            return []
+        resp = await client.get(
+            f"{self.base_url}/models",
+            headers={"Authorization": f"Bearer {self.api_key}"},
+        )
+        if resp.status_code != 200:
+            raise Exception(f"OpenRouter /models returned {resp.status_code}")
+        data = resp.json().get("data", [])
+        return [{"id": m["id"], "name": m.get("name", m["id"])} for m in data[:100]]
+
+
+# ---------------------------------------------------------------------------
+# OmniRoute (self-hosted OpenAI-compatible gateway)
+# ---------------------------------------------------------------------------
+
+class OmniRouteProvider(OpenRouterProvider):
+    """Self-hosted OmniRoute gateway, OpenAI-compatible on /v1.
+
+    MUST STREAM. This is not a preference — the gateway's non-streaming path is
+    broken, and using it is what made AEGIS believe it had no AI at all. Proven
+    by holding everything else constant and flipping one flag:
+
+        auto/cheap  stream=true  -> 200, real completion from xiaomi/mimo-v2.5
+        auto/cheap  stream=false -> 503 "Maximum combo retry limit reached"
+        auto/fast   stream=true  -> 200
+        auto/fast   stream=false -> 503
+
+    That 503 reads like an exhausted upstream pool, and it was misdiagnosed as
+    one for a long time. The pool is fine: in streaming the gateway emits
+    ": OPENROUTER PROCESSING" keepalives and then a normal completion. Only the
+    aggregate-then-return path fails.
+
+    The base class hardcodes ``stream: false`` (added precisely because an SSE
+    body broke ``resp.json()``), so this override cannot reuse it and instead
+    consumes the event stream and reassembles the message itself.
+
+    Model ids: the gateway serves 36 ``auto/*`` combos plus ~418 raw provider
+    ids (openrouter/*, tllm/*, oc/*, aug/*). A specific id is passed through
+    untouched; only a MISSING model falls back to the default.
+
+    The gateway runs with REQUIRE_API_KEY=false, so a placeholder api_key is
+    enough to satisfy the base class's "key configured" guard.
+    """
+
+    DEFAULT_MODEL = "auto/cheap"
+    # Reasoning tokens are billed against max_tokens before any content is
+    # emitted, so anything smaller than this returns an empty completion.
+    MIN_MAX_TOKENS = 512
+
+    def get_name(self) -> str:
+        return "omniroute"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        if not model:
+            model = self.DEFAULT_MODEL
+
+        # The combos resolve to reasoning models (xiaomi/mimo-v2.5 today), which
+        # spend the token budget on `reasoning` deltas BEFORE emitting a single
+        # `content` delta. Measured on a one-word prompt: 722 chars of reasoning
+        # to 5 chars of content. So a small max_tokens returns a 200 with an
+        # empty message — the budget is gone before the answer starts. Floor it.
+        max_tokens = max(max_tokens, self.MIN_MAX_TOKENS)
+
+        client = await self._get_client()
+        start = time.time()
+
+        content_parts: list[str] = []
+        resolved_model: str | None = None
+        usage: dict = {}
+
+        async with client.stream(
+            "POST",
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://github.com/aegis-defense/aegis",
+                "X-Title": "AEGIS Defense Platform",
+                "Accept": "text/event-stream",
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stream": True,
+            },
+        ) as resp:
+            if resp.status_code != 200:
+                body = (await resp.aread()).decode("utf-8", "replace")
+                raise Exception(f"OmniRoute returned {resp.status_code}: {body[:300]}")
+
+            async for line in resp.aiter_lines():
+                if not line:
+                    continue
+                # SSE comments are keepalives (": omniroute-keepalive",
+                # ": OPENROUTER PROCESSING") — the gateway sends a lot of them
+                # while an upstream is still thinking. They are not data.
+                if line.startswith(":"):
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if payload == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                resolved_model = resolved_model or chunk.get("model")
+                if chunk.get("usage"):
+                    usage = chunk["usage"]
+                for choice in chunk.get("choices", []):
+                    delta = choice.get("delta") or {}
+                    piece = delta.get("content")
+                    if piece:
+                        content_parts.append(piece)
+
+        latency_ms = int((time.time() - start) * 1000)
+        content = "".join(content_parts)
+
+        # A 200 that streamed only keepalives means every upstream declined
+        # without erroring. Raise so ai_manager can fall through the chain
+        # rather than handing callers a silently empty analysis.
+        if not content:
+            raise Exception(
+                f"OmniRoute streamed no content for model={model} "
+                f"(resolved={resolved_model or 'unknown'}, {latency_ms}ms)"
+            )
+
+        return {
+            "content": content,
+            "tokens_used": usage.get("total_tokens", 0),
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+            "model": resolved_model or model,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Anthropic
+# ---------------------------------------------------------------------------
+
+class AnthropicProvider(AIProvider):
+    """Direct Anthropic Messages API."""
+
+    KNOWN_MODELS = [
+        {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+        {"id": "claude-opus-4-6", "name": "Claude Opus 4.6"},
+        {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5"},
+    ]
+
+    def __init__(self, api_key: str = "", base_url: str = "https://api.anthropic.com"):
+        self.api_key = api_key
+        self.base_url = base_url
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=120.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "anthropic"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        if not self.api_key:
+            raise RuntimeError("anthropic: no api_key configured")
+
+        model = model or "claude-sonnet-4-6"
+        client = await self._get_client()
+
+        # Convert OpenAI message format to Anthropic format:
+        # - Extract system message(s) into top-level `system` param
+        # - Keep user/assistant messages in the `messages` list
+        system_parts: list[str] = []
+        anthropic_messages: list[dict] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system":
+                system_parts.append(content)
+            else:
+                anthropic_messages.append({"role": role, "content": content})
+
+        # Anthropic requires at least one user message
+        if not anthropic_messages:
+            anthropic_messages = [{"role": "user", "content": "Hello."}]
+
+        payload: dict = {
+            "model": model,
+            "messages": anthropic_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+
+        start = time.time()
+        resp = await client.post(
+            f"{self.base_url}/v1/messages",
+            headers={
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json=payload,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"Anthropic returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        # Anthropic response: {"content": [{"type": "text", "text": "..."}], "usage": {...}}
+        content_blocks = data.get("content", [])
+        content = "".join(
+            block.get("text", "") for block in content_blocks if block.get("type") == "text"
+        )
+        usage = data.get("usage", {})
+
+        return {
+            "content": content,
+            "tokens_used": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+        }
+
+    async def get_models(self) -> list[dict]:
+        return list(self.KNOWN_MODELS)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI
+# ---------------------------------------------------------------------------
+
+class OpenAIProvider(AIProvider):
+    """Direct OpenAI Chat Completions API."""
+
+    KNOWN_MODELS = [
+        {"id": "gpt-4o", "name": "GPT-4o"},
+        {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+        {"id": "gpt-4.1", "name": "GPT-4.1"},
+    ]
+
+    def __init__(self, api_key: str = "", base_url: str = "https://api.openai.com/v1"):
+        self.api_key = api_key
+        self.base_url = base_url
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=120.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "openai"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        if not self.api_key:
+            raise RuntimeError("openai: no api_key configured")
+
+        model = model or "gpt-4o-mini"
+        client = await self._get_client()
+        start = time.time()
+
+        resp = await client.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"OpenAI returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+
+        return {
+            "content": content,
+            "tokens_used": usage.get("total_tokens", 0),
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+        }
+
+    async def get_models(self) -> list[dict]:
+        if not self.api_key:
+            return list(self.KNOWN_MODELS)
+        try:
+            client = await self._get_client()
+            resp = await client.get(
+                f"{self.base_url}/models",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                gpt_models = [
+                    {"id": m["id"], "name": m["id"]}
+                    for m in data
+                    if "gpt" in m["id"] or "o1" in m["id"] or "o3" in m["id"]
+                ]
+                return gpt_models if gpt_models else list(self.KNOWN_MODELS)
+        except Exception:
+            pass
+        return list(self.KNOWN_MODELS)
+
+
+# ---------------------------------------------------------------------------
+# Ollama (local / air-gapped)
+# ---------------------------------------------------------------------------
+
+class OllamaProvider(AIProvider):
+    """Local Ollama instance -- no API key required."""
+
+    def __init__(self, base_url: str = "http://localhost:11434"):
+        self.base_url = base_url.rstrip("/")
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=300.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "ollama"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        model = model or "llama3"
+        client = await self._get_client()
+        start = time.time()
+
+        resp = await client.post(
+            f"{self.base_url}/api/chat",
+            json={
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                },
+            },
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"Ollama returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        content = data.get("message", {}).get("content", "")
+        prompt_tokens = data.get("prompt_eval_count", 0)
+        completion_tokens = data.get("eval_count", 0)
+
+        return {
+            "content": content,
+            "tokens_used": prompt_tokens + completion_tokens,
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+        }
+
+    async def get_models(self) -> list[dict]:
+        client = await self._get_client()
+        resp = await client.get(f"{self.base_url}/api/tags")
+        if resp.status_code != 200:
+            raise Exception(f"Ollama /api/tags returned {resp.status_code}")
+        models = resp.json().get("models", [])
+        return [
+            {"id": m["name"], "name": m.get("name", m["name"])}
+            for m in models
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Inception Labs (Mercury-2 diffusion LLM)
+# ---------------------------------------------------------------------------
+
+class InceptionProvider(AIProvider):
+    """Inception Labs Mercury-2 — diffusion-based LLM.
+
+    Mercury-2 is a diffusion language model that generates text in parallel
+    (not token-by-token like autoregressive models). This makes it potentially
+    faster for short, structured responses like security triage.
+
+    Special features:
+    - reasoning_effort: "instant" | "low" | "medium" | "high"
+      "instant" = fastest (best for triage), "high" = deepest reasoning
+    - Structured outputs via response_format with JSON schema enforcement
+    - Streaming with optional diffusing=true to see refinement process
+    - Free tier: 10M tokens
+    """
+
+    KNOWN_MODELS = [
+        {"id": "mercury-2", "name": "Mercury-2 (Diffusion LLM)"},
+    ]
+
+    # Map AEGIS task types to Mercury reasoning effort levels
+    TASK_REASONING: dict[str, str] = {
+        "triage": "instant",        # Fastest — sub-second decisions
+        "quick_decision": "instant",
+        "classification": "medium",
+        "risk_scoring": "medium",
+        "healing": "medium",
+        "investigation": "high",    # Deepest reasoning
+        "code_analysis": "high",
+        "report": "high",
+        "decoy_content": "medium",
+        "red_team": "high",
+        "counter_attack": "high",
+        "payload_analysis": "high",
+    }
+
+    def __init__(self, api_key: str = "", base_url: str = "https://api.inceptionlabs.ai/v1"):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=120.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "inception"
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.75,
+        max_tokens: int = 8192,
+        task_type: str = "triage",
+        **kwargs,
+    ) -> dict:
+        if not self.api_key:
+            raise RuntimeError("inception: no api_key configured")
+
+        model = model or "mercury-2"
+        reasoning = self.TASK_REASONING.get(task_type, "medium")
+        client = await self._get_client()
+        start = time.time()
+
+        payload: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "reasoning_effort": reasoning,
+        }
+
+        # For triage/classification tasks, enforce structured JSON output
+        if task_type in ("triage", "classification", "risk_scoring", "quick_decision"):
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "SecurityAnalysis",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+                            "threat_type": {"type": "string"},
+                            "mitre_technique": {"type": "string"},
+                            "mitre_tactic": {"type": "string"},
+                            "summary": {"type": "string"},
+                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                        },
+                        "required": ["severity", "threat_type", "summary", "confidence"],
+                    },
+                },
+            }
+
+        resp = await client.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"Inception returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = data.get("usage", {})
+
+        return {
+            "content": content,
+            "tokens_used": usage.get("total_tokens", 0),
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+            "reasoning_effort": reasoning,
+            "reasoning_tokens": usage.get("reasoning_tokens", 0),
+        }
+
+    async def get_models(self) -> list[dict]:
+        return list(self.KNOWN_MODELS)
+
+
+# ---------------------------------------------------------------------------
+# Google Gemini (Generative Language API)
+# ---------------------------------------------------------------------------
+
+class GeminiProvider(AIProvider):
+    """Google Gemini via Generative Language REST API.
+
+    Default model: gemini-flash-lite-latest (cheap + fast, suitable for
+    enrichment + triage on the AEGIS hot path).
+    """
+
+    KNOWN_MODELS = [
+        {"id": "gemini-flash-lite-latest", "name": "Gemini Flash Lite (latest)"},
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
+        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite"},
+        {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"},
+    ]
+
+    def __init__(
+        self,
+        api_key: str = "",
+        base_url: str = "https://generativelanguage.googleapis.com/v1beta",
+    ):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=120.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    def get_name(self) -> str:
+        return "gemini"
+
+    @staticmethod
+    def _to_gemini_contents(messages: list[dict]) -> tuple[list[dict], Optional[str]]:
+        """Translate OpenAI-style messages → Gemini `contents` + system_instruction.
+
+        Gemini's role names are "user" and "model" (not "assistant").
+        System messages are merged into a single system_instruction string.
+        """
+        system_parts: list[str] = []
+        contents: list[dict] = []
+        for m in messages:
+            role = m.get("role", "user")
+            text = m.get("content", "")
+            if not text:
+                continue
+            if role == "system":
+                system_parts.append(text)
+                continue
+            gemini_role = "model" if role == "assistant" else "user"
+            contents.append({"role": gemini_role, "parts": [{"text": text}]})
+        system_instruction = "\n\n".join(system_parts) if system_parts else None
+        return contents, system_instruction
+
+    async def chat(
+        self,
+        messages: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+    ) -> dict:
+        if not self.api_key:
+            raise RuntimeError("gemini: no api_key configured")
+
+        model = model or "gemini-flash-lite-latest"
+        client = await self._get_client()
+        contents, system_instruction = self._to_gemini_contents(messages)
+
+        body: dict = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+        if system_instruction:
+            body["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+        start = time.time()
+        resp = await client.post(
+            f"{self.base_url}/models/{model}:generateContent",
+            params={"key": self.api_key},
+            headers={"Content-Type": "application/json"},
+            json=body,
+        )
+        latency_ms = int((time.time() - start) * 1000)
+
+        if resp.status_code != 200:
+            raise Exception(f"Gemini returned {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        candidates = data.get("candidates", []) or []
+        if not candidates:
+            content = ""
+        else:
+            parts = candidates[0].get("content", {}).get("parts", []) or []
+            content = "".join(p.get("text", "") for p in parts)
+
+        usage = data.get("usageMetadata", {}) or {}
+        tokens_used = (
+            usage.get("totalTokenCount")
+            or (usage.get("promptTokenCount", 0) + usage.get("candidatesTokenCount", 0))
+            or 0
+        )
+
+        return {
+            "content": content,
+            "tokens_used": tokens_used,
+            "cost_usd": 0.0,
+            "latency_ms": latency_ms,
+        }
+
+    async def get_models(self) -> list[dict]:
+        if not self.api_key:
+            return list(self.KNOWN_MODELS)
+        try:
+            client = await self._get_client()
+            resp = await client.get(
+                f"{self.base_url}/models",
+                params={"key": self.api_key},
+            )
+            if resp.status_code == 200:
+                models = resp.json().get("models", []) or []
+                out = [
+                    {
+                        "id": m["name"].removeprefix("models/"),
+                        "name": m.get("displayName") or m["name"],
+                    }
+                    for m in models
+                    if "generateContent" in (m.get("supportedGenerationMethods") or [])
+                ]
+                return out if out else list(self.KNOWN_MODELS)
+        except Exception:
+            pass
+        return list(self.KNOWN_MODELS)
+
+
+# ---------------------------------------------------------------------------
+# Provider factory
+# ---------------------------------------------------------------------------
+
+PROVIDER_CLASSES: dict[str, type[AIProvider]] = {
+    "openrouter": OpenRouterProvider,
+    "omniroute": OmniRouteProvider,
+    "anthropic": AnthropicProvider,
+    "openai": OpenAIProvider,
+    "ollama": OllamaProvider,
+    "inception": InceptionProvider,
+    "gemini": GeminiProvider,
+}
+
+
+def create_provider(name: str, **kwargs) -> AIProvider:
+    """Instantiate a provider by name.
+
+    kwargs are forwarded to the provider constructor (api_key, base_url, etc.).
+    """
+    cls = PROVIDER_CLASSES.get(name)
+    if cls is None:
+        raise ValueError(f"Unknown AI provider: {name}")
+    return cls(**kwargs)

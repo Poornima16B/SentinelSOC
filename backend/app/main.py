@@ -1,0 +1,1102 @@
+import asyncio
+import json
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.client_ip import rate_limit_key
+
+from app.config import settings
+from app.version import __version__
+from app.database import engine, async_session
+from app.models import Base
+from app.core.auth import seed_demo_client, seed_default_admin, require_viewer as _require_viewer
+from app.core.boot_guard import assert_production_secrets, DEFAULT_ADMIN_PASSWORD
+from app.core.events import event_bus
+from app.core.event_stream import EventStream
+from app.core.ws_push import ws_push_manager
+from app.core.bg_tasks import fire_and_forget, drain as drain_bg_tasks
+from app.core.openrouter import openrouter_client
+from app.services.notifier import notifier
+from app.services.correlation_engine import correlation_engine
+from app.services.counter_attack import counter_attack_engine
+from app.services.threat_feeds import threat_feed_manager
+from app.services.report_scheduler import report_scheduler
+from app.services.playbook_engine import playbook_engine
+from app.services.intel_cloud import intel_cloud
+from app.services.behavioral_ml import behavioral_engine
+from app.core.ai_manager import ai_manager, init_default_providers
+from app.models.client import Client
+
+from app.modules.response.responder import active_responder
+from app.modules.phantom.ssh_honeypot import ssh_honeypot
+from app.modules.phantom.http_honeypot import http_honeypot
+from app.modules.phantom.processor import interaction_processor
+from app.models.action import Action
+from app.services.log_watcher import log_watcher
+from app.services.scheduled_scanner import scheduled_scanner
+from app.services.host_monitor import host_monitor, AGENT_ID as HOST_MONITOR_AGENT_ID
+# Side-effect import: registers SQLAlchemy after_insert listener on Incident
+# that fires ip_intel.lookup() in the background and updates ai_analysis.
+import app.services.incident_enrichment  # noqa: F401
+
+from app.api import auth, dashboard, surface, response, phantom, threats, correlation, admin
+from app.api import feeds, reports, ai_providers as ai_providers_router
+from app.api import ask_ai as ask_ai_router
+from app.api import intel_cloud as intel_cloud_router
+from app.api import behavioral as behavioral_router
+from app.api import network as network_router
+from app.api import setup as setup_router
+from app.api import settings as settings_router
+from app.api import agents as agents_router
+from app.api import infra as infra_router
+from app.api import nodes as nodes_router
+from app.api import sbom as sbom_router
+from app.api import quantum as quantum_router
+from app.api import onboarding as onboarding_router
+from app.api import payments as payments_router
+from app.api import compliance as compliance_router
+from app.api import updates as updates_router
+from app.api import firewall as firewall_router
+from app.api import switch as switch_router
+from app.api import rules as rules_router
+from app.api import ransomware as ransomware_router
+from app.api import deception as deception_router
+from app.api import intel as intel_router
+from app.api import edr as edr_router
+from app.api import antivirus as antivirus_router
+from app.api import dos as dos_router
+from app.services.signature_updater import signature_updater
+
+# MongoDB threat intel hub
+from app.core.mongo_client import connect_mongo, close_mongo
+from app.services.threat_intel_hub import threat_intel_hub
+from app.api import threat_intel_hub as threat_intel_hub_router
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+# AEGIS tails its own log: no record may span lines (see log_sanitize).
+from app.core import log_sanitize  # noqa: E402
+log_sanitize.install()
+logger = logging.getLogger("cayde6")
+
+
+# --- Event Stream (Redis or in-memory) ---
+
+event_stream = EventStream(
+    redis_url=settings.REDIS_URL,
+    use_redis=not settings.USE_MEMORY_BUS,
+)
+
+
+# --- WebSocket push handler (replaces old ConnectionManager) ---
+
+# Map internal event_bus event names to Live-dashboard topic names.
+# Multiple topics per event are allowed so a single incident event
+# can fan out to several widgets at once (e.g. attack feed AND top-10 refresh).
+EVENT_TO_TOPICS: dict[str, tuple[str, ...]] = {
+    "alert_processed": ("incidents.new", "metrics.top_attackers", "metrics.top_attack_types"),
+    "correlation_triggered": ("incidents.new",),
+    "fast_triage_completed": ("incidents.new",),
+    "playbook_executed": ("incidents.new",),
+    "action_executed": ("actions.new", "metrics.blocked"),
+    "action_requires_approval": ("actions.new",),
+    "honeypot_interaction": ("honeypot.interactions", "attackers.geo"),
+    "honeypot_deployed": ("honeypot.status",),
+    "scan_completed": ("scans.completed",),
+    "node_status": ("nodes.status",),
+    "log_line": ("logs.stream",),
+    # EDR events
+    "edr.event": ("edr.events",),
+    "edr.suspicious_process": ("edr.events", "incidents.new"),
+    "edr.process_start": ("edr.events",),
+    # Threat sharing events
+    "threat_shared": ("threats.new", "threats.ioc"),
+    "threat_blocked_ip": ("threats.blocked_ip", "threats.new"),
+    "threat_pattern_update": ("threats.pattern_update",),
+    # DoS Shield events (v1.6.4.1)
+    "dos.http_flood": ("dos.events", "incidents.new"),
+    "dos.distributed": ("dos.events", "incidents.new"),
+    "dos.expensive_abuse": ("dos.events", "incidents.new"),
+    "dos.slowloris": ("dos.events", "incidents.new"),
+    "dos.under_attack": ("dos.events", "incidents.new"),
+    "dos.ip_blocked": ("dos.events", "actions.new"),
+}
+
+
+async def ws_event_handler(data):
+    """Forward events to WebSocket clients via WSPushManager with topic routing."""
+    payload = data if isinstance(data, dict) else {"data": data}
+    event_type = payload.get("_event_type") or payload.get("type") or "event"
+    topics = EVENT_TO_TOPICS.get(event_type, (event_type,))
+    # Emit one broadcast per topic so each widget-subscriber gets a clean,
+    # topic-tagged message.
+    for topic in topics:
+        msg = {**payload, "topic": topic, "_event_type": event_type}
+        await ws_push_manager.broadcast(msg)
+
+
+async def _get_client(client_id: str | None) -> Client | None:
+    if not client_id:
+        return None
+    async with async_session() as db:
+        return await db.get(Client, client_id)
+
+
+async def notify_alert_processed(data):
+    # DB fetch + outbound webhook/Telegram calls are too slow for the
+    # event-bus hot path (see core/bg_tasks.py) — offload and return
+    # immediately so the next queued event isn't stalled behind us.
+    fire_and_forget(_notify_alert_processed_impl(data), label="notify_alert_processed")
+
+
+async def _notify_alert_processed_impl(data):
+    client = await _get_client(data.get("client_id"))
+    if not client:
+        return
+    severity = (data.get("incident_severity") or "").lower()
+    settings_map = client.settings or {}
+    notify_critical = settings_map.get("notify_on_critical", True)
+    notify_high = settings_map.get("notify_on_high", True)
+
+    if severity == "critical" and notify_critical:
+        await notifier.notify(client, {
+            "platform": "Cayde-6",
+            "event_type": "incident_critical",
+            "title": data.get("incident_title", "Critical incident"),
+            "severity": severity,
+            "incident_id": data.get("incident_id"),
+            "message": data.get("summary") or "Critical incident detected.",
+            "source_ip": data.get("source_ip"),
+        })
+    elif severity == "high" and notify_high:
+        await notifier.notify(client, {
+            "platform": "Cayde-6",
+            "event_type": "incident_high",
+            "title": data.get("incident_title", "High severity incident"),
+            "severity": severity,
+            "incident_id": data.get("incident_id"),
+            "message": data.get("summary") or "High severity incident detected.",
+            "source_ip": data.get("source_ip"),
+        })
+
+
+async def notify_action_executed(data):
+    # Offloaded — see notify_alert_processed above.
+    fire_and_forget(_notify_action_executed_impl(data), label="notify_action_executed")
+
+
+async def _notify_action_executed_impl(data):
+    client = await _get_client(data.get("client_id"))
+    if not client:
+        return
+    settings_map = client.settings or {}
+    if not settings_map.get("notify_on_actions", True):
+        return
+    await notifier.notify(client, {
+        "platform": "Cayde-6",
+        "event_type": "action_executed",
+        "title": "Action executed",
+        "incident_id": data.get("incident_id"),
+        "action_type": data.get("action_type"),
+        "target": data.get("target"),
+        "message": f"Action '{data.get('action_type')}' executed on '{data.get('target')}'.",
+    })
+
+
+# At most this many chain evaluations run at once; the rest wait their turn
+# (bounded overall by bg_tasks._MAX_INFLIGHT) instead of piling up on the DB.
+_EDR_CHAIN_CONCURRENCY = 4
+_edr_chain_sem = asyncio.Semaphore(_EDR_CHAIN_CONCURRENCY)
+
+
+async def edr_chain_handler(data):
+    """Feed host-monitor process_start events into the attack chain detector.
+
+    The per-agent process index is cached in memory (process_tree) and kept
+    current here, synchronously, before the evaluation is handed to a bounded
+    background task. The evaluation itself needs no DB session unless a rule
+    matches (to persist the incident), so a stream of events costs no queries.
+    """
+    if not isinstance(data, dict) or data.get("kind") != "process_start":
+        return
+    from app.core.bg_tasks import fire_and_forget
+    from app.services.process_tree import feed_payload
+
+    try:
+        feed_payload(data.get("agent_id", HOST_MONITOR_AGENT_ID), data)
+    except Exception as e:
+        logger.debug("edr_chain_handler index feed error: %s", e)
+    fire_and_forget(_edr_chain_eval_impl(data), label="edr_chain_eval")
+
+
+async def _edr_chain_eval_impl(data):
+    try:
+        from app.services.attack_chain_detector import match_event, persist_matches
+        from app.services.process_tree import ancestors_for
+        from app.models.endpoint_agent import EndpointAgent
+
+        agent_id = data.get("agent_id", HOST_MONITOR_AGENT_ID)
+
+        async def ancestry_fetcher(pid: int) -> list[dict]:
+            return await ancestors_for(agent_id, pid, session_factory=async_session)
+
+        async with _edr_chain_sem:
+            anchor, matches = await match_event(data, ancestry_fetcher)
+        if not matches:
+            return
+        async with async_session() as db:
+            agent = await db.get(EndpointAgent, agent_id)
+            if not agent:
+                return
+            persist_matches(db, agent, anchor, data, matches)
+            await db.commit()
+            logger.info(
+                "EDR chain detector: %d matches for pid=%s",
+                len(matches), data.get("pid"),
+            )
+    except Exception as e:
+        logger.debug("edr_chain_handler error: %s", e)
+
+
+async def handle_auto_approved_action(data):
+    """Fetch auto-approved Action from DB and execute it immediately."""
+    action_id = data.get("action_id")
+    if not action_id:
+        logger.error("action_auto_approved event missing action_id")
+        return
+    try:
+        async with async_session() as db:
+            action = await db.get(Action, action_id)
+            if not action:
+                logger.error(f"Action {action_id} not found for auto-execution")
+                return
+            if action.status != "approved":
+                logger.warning(f"Action {action_id} status is '{action.status}', skipping auto-execution")
+                return
+            logger.info(f"AUTO-EXECUTING action {action.action_type} on {action.target}")
+            result = await active_responder.execute_action(action, db)
+            logger.info(f"Auto-execution result for {action_id}: success={result.get('success')}")
+    except Exception as e:
+        logger.error(f"Auto-execution failed for action {action_id}: {e}")
+
+
+async def notify_action_requires_approval(data):
+    # Offloaded — see notify_alert_processed above.
+    fire_and_forget(_notify_action_requires_approval_impl(data), label="notify_action_requires_approval")
+
+
+async def _notify_action_requires_approval_impl(data):
+    client = await _get_client(data.get("client_id"))
+    if not client:
+        return
+    settings_map = client.settings or {}
+    if not settings_map.get("notify_on_actions", True):
+        return
+    await notifier.notify(client, {
+        "platform": "Cayde-6",
+        "event_type": "action_requires_approval",
+        "title": "Action approval required",
+        "incident_id": data.get("incident_id"),
+        "action_type": data.get("action_type"),
+        "target": data.get("target"),
+        "message": f"Action '{data.get('action_type')}' on '{data.get('target')}' requires approval.",
+    })
+
+
+# --- Lifespan ---
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Cayde-6 starting up...")
+
+    # --- Secret key / admin password check ---
+    # P0-9: this used to be a log-only warning that allowed boot to continue
+    # with default secrets in production. It is now fatal -- refuses to boot.
+    assert_production_secrets(
+        env=settings.AEGIS_ENV,
+        secret_key=settings.AEGIS_SECRET_KEY,
+        admin_password=settings.AEGIS_ADMIN_PASSWORD,
+    )
+
+    # Validate AEGIS_EDR_TRUSTED_PARENTS once at boot so bad entries are logged.
+    from app.services.edr_trusted_parents import get_trusted_parents
+    get_trusted_parents()
+
+    # P0-7: DeceptionCampaign isn't imported by app/models/__init__.py (out of
+    # scope for this change), so its table wouldn't be registered on
+    # Base.metadata in time for create_all below without this explicit
+    # import. Must run BEFORE create_all.
+    from app.models.deception_campaign import DeceptionCampaign  # noqa: F401
+
+    # Create tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables created")
+
+    # P0-7: rehydrate Honey-AI deception campaigns from Postgres into the
+    # orchestrator's in-memory dict. Without this, every PM2 restart wiped
+    # the dict while honey_breadcrumbs rows survived, leaving orphaned
+    # breadcrumbs and an empty GET /deception/campaigns response.
+    try:
+        from app.services.honey_ai import deception_orchestrator
+        async with async_session() as db:
+            await deception_orchestrator.rehydrate(db)
+    except Exception as e:
+        logger.error(f"Deception campaign rehydration failed (non-fatal): {e}")
+
+    # Seed demo client and default admin user
+    async with async_session() as db:
+        from sqlalchemy import select as _startup_sel
+        demo = await seed_demo_client(db)
+        # The key itself is never logged. It used to be written in full at
+        # startup, which put a live credential into cayde6-api-out.log -- a
+        # file PM2 rotates to disk, log_watcher tails, and anyone with read
+        # access to the host can grep. Log enough to confirm the seed ran and
+        # to recognise the key, not enough to use it.
+        _key = demo.api_key or ""
+        logger.info(
+            f"Demo client ready: slug='{demo.slug}' "
+            f"api_key={_key[:6]}...{_key[-4:]} (len={len(_key)})"
+        )
+        await seed_default_admin(db, demo)
+        logger.info("Default admin user seeded (admin@cayde6.local)")
+
+        # Get ALL clients for auto-discovery — each client gets their own assets
+        _all_clients = await db.execute(_startup_sel(Client))
+        all_clients = list(_all_clients.scalars().all())
+        # Filter out demo if there are real clients
+        real_clients = [c for c in all_clients if c.slug != "demo"]
+        discovery_clients = real_clients if real_clients else all_clients
+        logger.info(f"Auto-discovery targets: {[c.slug for c in discovery_clients]}")
+
+    # Auto-discover localhost services on every startup.
+    # Each client gets their own copy of discovered assets.
+    # Uses upsert logic: updates existing assets, creates new ones.
+    # Runs in background so it never blocks startup.
+    async def _auto_discover_localhost(client_id: str):
+        try:
+            from sqlalchemy import select as _sel
+            from app.models.asset import Asset
+            from app.services.auto_discovery import auto_discovery
+            from app.services import asset_risk
+            from datetime import datetime
+
+            logger.info("Running localhost auto-discovery (upsert mode)...")
+            result = await auto_discovery.discover_host("127.0.0.1")
+
+            if result.error:
+                logger.warning(f"Auto-discovery error: {result.error}")
+                return
+
+            created = 0
+            updated = 0
+            async with async_session() as db:
+                # Group all of a host's discovered services BEFORE touching the
+                # DB, then do exactly one match + one write per (client_id,
+                # ip_address) pair. Matching by "whichever cached asset object
+                # currently contains this port" (the old approach) mutated the
+                # in-memory list mid-loop, so the next service on the same host
+                # could no longer find it — spawning a duplicate row per port
+                # on every multi-port host, every boot.
+                for host in result.hosts:
+                    if not host.services:
+                        continue
+
+                    # Real, stable identity — mirrors nodes.py's report_assets
+                    # matching. Ordered + .first() (not scalar_one_or_none)
+                    # because pre-existing duplicate rows from the old bug may
+                    # still be present until the one-off repair runs; take the
+                    # oldest deterministically rather than crash.
+                    existing_result = await db.execute(
+                        _sel(Asset)
+                        .where(
+                            Asset.client_id == client_id,
+                            Asset.ip_address == host.ip,
+                        )
+                        .order_by(Asset.created_at.asc())
+                    )
+                    matched_asset = existing_result.scalars().first()
+
+                    # One port dict per discovered service on this host.
+                    new_ports = {
+                        svc.port: {
+                            "port": svc.port,
+                            "protocol": svc.protocol,
+                            "service": svc.service,
+                            "state": "open",
+                        }
+                        for svc in host.services
+                    }
+
+                    # Descriptive hostname derived from the first service
+                    # (never "localhost" or a raw IP).
+                    primary_svc = host.services[0]
+                    good_hostname = primary_svc.hostname
+                    if not good_hostname or good_hostname in ("localhost", "127.0.0.1", "::1", ""):
+                        good_hostname = f"{primary_svc.service.lower().replace(' ', '-')}-{primary_svc.port}"
+
+                    # Union of technologies across every service on this host.
+                    technologies: list[str] = []
+                    for svc in host.services:
+                        for tech in svc.technologies:
+                            if tech not in technologies:
+                                technologies.append(tech)
+
+                    if matched_asset:
+                        # Merge new ports into the existing set keyed by port
+                        # number — union of old+new (discovery is additive),
+                        # never a destructive replace of the whole list.
+                        merged_ports = {
+                            p["port"]: p for p in (matched_asset.ports or []) if isinstance(p, dict)
+                        }
+                        merged_ports.update(new_ports)
+                        matched_asset.ports = list(merged_ports.values())
+
+                        if matched_asset.hostname in ("localhost", "127.0.0.1", "") or not matched_asset.hostname:
+                            matched_asset.hostname = good_hostname
+                        merged_technologies = list(matched_asset.technologies or [])
+                        for tech in technologies:
+                            if tech not in merged_technologies:
+                                merged_technologies.append(tech)
+                        matched_asset.technologies = merged_technologies
+                        # risk_score intentionally left untouched here: it is
+                        # recomputed live by surface.py (asset_risk.score_asset)
+                        # for display and periodically by scheduled_scanner —
+                        # do not stomp it with auto_discovery's legacy 0-100
+                        # heuristic (which can also be AI-derived and thus
+                        # nondeterministic).
+                        matched_asset.last_scan_at = datetime.utcnow()
+                        updated += 1
+                    else:
+                        port_data = list(new_ports.values())
+                        floor_score = asset_risk.score_asset(
+                            ports=port_data,
+                            ip_address=host.ip,
+                            hostname=good_hostname,
+                        )["risk_score"]
+                        asset = Asset(
+                            client_id=client_id,
+                            hostname=good_hostname,
+                            ip_address=host.ip,
+                            asset_type=primary_svc.asset_type,
+                            ports=port_data,
+                            technologies=technologies,
+                            status="active",
+                            risk_score=floor_score,
+                            last_scan_at=datetime.utcnow(),
+                        )
+                        db.add(asset)
+                        created += 1
+
+                await db.commit()
+            logger.info(f"Auto-discovery complete: {created} created, {updated} updated")
+        except Exception as e:
+            logger.error(f"Auto-discovery failed (non-fatal): {e}")
+
+    # Run auto-discovery for each client
+    for _client in discovery_clients:
+        asyncio.create_task(_auto_discover_localhost(_client.id))
+
+    # Start event stream (Redis or in-memory)
+    await event_stream.start()
+    logger.info(f"Event stream started (backend={'redis' if event_stream.is_redis else 'memory'})")
+
+    # Wire event stream to event bus for dual publishing
+    event_bus.set_event_stream(event_stream)
+
+    # Start event bus
+    await event_bus.start()
+    event_bus.subscribe("alert_processed", ws_event_handler)
+    event_bus.subscribe("scan_completed", ws_event_handler)
+    event_bus.subscribe("action_executed", ws_event_handler)
+    event_bus.subscribe("action_requires_approval", ws_event_handler)
+    event_bus.subscribe("honeypot_deployed", ws_event_handler)
+    event_bus.subscribe("honeypot_interaction", ws_event_handler)
+    event_bus.subscribe("correlation_triggered", ws_event_handler)
+    event_bus.subscribe("agent_registered", ws_event_handler)
+    event_bus.subscribe("agent_alert", ws_event_handler)
+    event_bus.subscribe("forensic_captured", ws_event_handler)
+    event_bus.subscribe("fast_triage_completed", ws_event_handler)
+    event_bus.subscribe("playbook_executed", ws_event_handler)
+    event_bus.subscribe("alert_processed", notify_alert_processed)
+    event_bus.subscribe("action_executed", notify_action_executed)
+    event_bus.subscribe("action_requires_approval", notify_action_requires_approval)
+    event_bus.subscribe("action_auto_approved", handle_auto_approved_action)
+    event_bus.subscribe("action_auto_approved", ws_event_handler)
+    event_bus.subscribe("log_line", ws_event_handler)
+    # EDR event_bus subscriptions
+    event_bus.subscribe("edr.event", ws_event_handler)
+    event_bus.subscribe("edr.suspicious_process", ws_event_handler)
+    event_bus.subscribe("edr.process_start", ws_event_handler)
+    event_bus.subscribe("edr.process_start", edr_chain_handler)
+    # Threat sharing event_bus subscriptions
+    event_bus.subscribe("threat_shared", ws_event_handler)
+    event_bus.subscribe("threat_blocked_ip", ws_event_handler)
+    event_bus.subscribe("threat_pattern_update", ws_event_handler)
+    logger.info("Event bus started with WebSocket forwarding + auto-execution wired")
+
+    # Start counter-attack engine (active defense)
+    counter_attack_engine.register_event_bus()
+    event_bus.subscribe("counter_attack_analysis", ws_event_handler)
+    event_bus.subscribe("counter_attack_executed", ws_event_handler)
+    logger.info("Counter-attack engine registered (active defense)")
+
+    # Start playbook engine
+    playbook_engine.register_event_bus(event_bus)
+    logger.info("Playbook engine registered with event bus")
+
+    # Start correlation engine
+    correlation_engine.register_event_bus(event_bus)
+    await correlation_engine.start()
+    logger.info("Sigma correlation engine started (with chain rules)")
+
+    # Start DoS Shield (v1.6.4.1) — L7 flood detection. Monitor-mode by default
+    # (AEGIS_DOS_MODE=monitor): detects + emits dos.* events, NEVER 429/blocks.
+    # Mirrors the correlation_engine pattern: register bus, then start().
+    try:
+        from app.services.dos_shield import dos_shield
+        if hasattr(dos_shield, "register_event_bus"):
+            dos_shield.register_event_bus(event_bus)
+        if hasattr(dos_shield, "start"):
+            await dos_shield.start()
+        # Forward dos.* events to the live dashboard.
+        for _dos_topic in (
+            "dos.http_flood",
+            "dos.distributed",
+            "dos.expensive_abuse",
+            "dos.slowloris",
+            "dos.under_attack",
+            "dos.ip_blocked",
+        ):
+            event_bus.subscribe(_dos_topic, ws_event_handler)
+        logger.info("DoS Shield started (mode=%s, netshield=%s)",
+                    settings.AEGIS_DOS_MODE, settings.AEGIS_DOS_NETSHIELD)
+    except Exception as exc:
+        logger.error("DoS Shield failed to start (non-fatal): %s", exc)
+
+    # Start threat feeds
+    await threat_feed_manager.start()
+    logger.info("Threat feed manager started")
+
+    # Start report scheduler
+    report_scheduler.start()
+    logger.info("Report scheduler started")
+
+    # Init multi-provider AI
+    init_default_providers(
+        openrouter_api_key=settings.OPENROUTER_API_KEY,
+        openrouter_base_url=settings.OPENROUTER_BASE_URL,
+        inception_api_key=settings.INCEPTION_API_KEY,
+        inception_base_url=settings.INCEPTION_BASE_URL,
+        gemini_api_key=settings.GEMINI_API_KEY,
+        gemini_base_url=settings.GEMINI_BASE_URL,
+        omniroute_url=settings.AEGIS_OMNIROUTE_URL,
+    )
+    openrouter_client.bind_ai_manager(ai_manager)
+    logger.info("Multi-provider AI manager initialized")
+
+    # Start intel cloud
+    await intel_cloud.start()
+    logger.info("Threat intel cloud started")
+
+    # Start behavioral ML
+    await behavioral_engine.start()
+    logger.info("Behavioral ML engine started")
+
+    # Task #6: Start antivirus signature updater (daily YARA + MalwareBazaar pull)
+    await signature_updater.start()
+    logger.info("Antivirus signature updater started")
+
+    # Start MongoDB threat intel hub (conditional on AEGIS_MONGODB_URI)
+    mongo_ok = await connect_mongo()
+    if mongo_ok:
+        await threat_intel_hub.start()
+        logger.info("MongoDB threat intel hub started")
+    else:
+        logger.info("MongoDB threat intel hub disabled (not configured or unreachable)")
+
+    # --- Threat Sharing Hub Sync ---
+    from app.services.hub_sync_client import hub_sync_client
+    from app.services.auto_sharer import auto_sharer
+    import uuid  # os is imported at module level; a local `import os` here would
+                 # shadow it for the whole lifespan scope (UnboundLocalError at the
+                 # boot-guard os.environ call above)
+
+    hub_url = os.environ.get("AEGIS_HUB_URL", settings.AEGIS_HUB_URL)
+    if hub_url:
+        node_id = getattr(threat_intel_hub, 'instance_id', '') or str(uuid.uuid4())[:16]
+        node_name = "AEGIS Node"
+        try:
+            from sqlalchemy import select as _hub_sel
+            async with async_session() as db:
+                result = await db.execute(_hub_sel(Client).limit(1))
+                client = result.scalar_one_or_none()
+                if client:
+                    node_name = client.name or "AEGIS Node"
+        except Exception:
+            pass
+        await hub_sync_client.start(hub_url, node_id, node_name)
+        logger.info(f"Threat sharing: connected to hub {hub_url}")
+    else:
+        logger.info("Threat sharing: hub mode (this IS the hub)")
+
+    # Auto-share detections to hub
+    event_bus.subscribe("alert_processed", auto_sharer.on_alert_processed)
+    event_bus.subscribe("honeypot_interaction", auto_sharer.on_honeypot_interaction)
+    event_bus.subscribe("correlation_triggered", auto_sharer.on_correlation_triggered)
+    logger.info("Auto-sharer subscribed to detection events")
+
+    logger.info(f"Cayde-6 ready on port {settings.AEGIS_API_PORT}")
+
+    # Prime configurable firewall rule cache for all tenants
+    try:
+        from sqlalchemy import select as _sa_select
+        from app.services.firewall_engine import firewall_engine
+        async with async_session() as db:
+            result = await db.execute(_sa_select(Client).limit(50))
+            for c in result.scalars().all():
+                try:
+                    await firewall_engine.load_rules(c.id, force=True)
+                except Exception as exc:
+                    logger.debug(f"firewall_engine warm for {c.id} failed: {exc}")
+        logger.info("Configurable firewall rule cache primed")
+    except Exception as e:
+        logger.error(f"Failed to prime firewall engine cache: {e}")
+
+    # Initialize local system firewall (pfctl/iptables if AEGIS_REAL_FW=1, else Noop)
+    try:
+        from app.services import firewall_local as _fw_local
+        _fw_local.get_firewall().setup()
+        logger.info(f"Local firewall setup complete ({type(_fw_local.get_firewall()).__name__})")
+    except Exception as e:
+        logger.error(f"Local firewall setup failed (non-fatal): {e}")
+
+    # Start external firewall sync (conditional on AEGIS_FIREWALL_URL)
+    if settings.AEGIS_FIREWALL_URL:
+        from app.services.firewall_sync import firewall_sync
+        await firewall_sync.start()
+        logger.info(f"Firewall sync started (target: {settings.AEGIS_FIREWALL_URL})")
+    else:
+        logger.info("External firewall sync disabled (AEGIS_FIREWALL_URL not set)")
+
+    # MikroTik switch health monitor (read-only, diagnostic; conditional on AEGIS_SWITCH_URL)
+    if settings.AEGIS_SWITCH_URL:
+        try:
+            from app.services.switch_monitor import switch_monitor
+            await switch_monitor.start()
+        except Exception as e:
+            logger.error(f"Switch monitor failed to start (non-fatal): {e}")
+
+    # Start honeypots (SSH on 2222, HTTP on 8888)
+    # Bounded: one processor drains this serially (up to seconds per item), so
+    # a flood on the honeypots must drop interactions, not grow the heap.
+    honeypot_queue = asyncio.Queue(maxsize=5000)
+    try:
+        await ssh_honeypot.start(honeypot_queue)
+        logger.info('SSH honeypot started on port 2222')
+    except Exception as e:
+        logger.error(f'Failed to start SSH honeypot: {e}')
+    try:
+        await http_honeypot.start(honeypot_queue)
+        logger.info('HTTP honeypot started on port 8888')
+    except Exception as e:
+        logger.error(f'Failed to start HTTP honeypot: {e}')
+    # TLS / JA4 fingerprint honeypot (port 8889). Opt-in via AEGIS_TLS_HP_ENABLE=1.
+    try:
+        from app.modules.phantom.tls_honeypot import start_tls_honeypot
+        await start_tls_honeypot()
+    except Exception as e:
+        logger.error(f'Failed to start TLS honeypot: {e}')
+    await interaction_processor.start(honeypot_queue)
+    logger.info('Honeypot interaction processor started')
+
+    # Start log watcher (tails PM2 logs for security patterns + feeds Raw Log Stream)
+    await log_watcher.start()
+    logger.info('Log watcher started')
+
+    # Memory-bounding sweeper for the module-level attack_detector._attack_log.
+    # That per-IP tracker prunes deque *contents* by age on the hot path but
+    # never removed the empty dict keys, so it leaked one entry per unique
+    # attacker IP forever. This periodic sweep evicts idle keys (every 60s).
+    try:
+        from app.core.attack_detector import attack_log_sweeper
+        app.state.attack_log_sweeper_task = asyncio.create_task(
+            attack_log_sweeper(60), name='attack_log_sweeper'
+        )
+        logger.info('attack_log sweeper started (60s idle-key eviction)')
+    except Exception as exc:
+        logger.warning(f'attack_log sweeper failed to start: {exc}')
+
+    # Memory-bounding sweeper for ip_intel's per-IP enrichment caches
+    # (_CACHE/_DEEP_CACHE). incident_enrichment fires ip_intel.lookup() for
+    # every new incident's source IP, so those dicts gained one entry per unique
+    # attacker IP and only evicted on a repeat lookup of the same IP — a slow
+    # leak proportional to distinct IPs seen. This sweep drops expired + LRU-caps
+    # them every 300s (TTLs are 15min/24h).
+    async def _ip_intel_cache_sweeper(interval_s: int = 300):
+        from app.services import ip_intel as _ip_intel
+        while True:
+            try:
+                await asyncio.sleep(interval_s)
+                evicted = _ip_intel.sweep()
+                if evicted:
+                    logger.debug('ip_intel cache sweep evicted %d entries', evicted)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                logger.debug('ip_intel cache sweep error: %s', exc)
+
+    try:
+        app.state.ip_intel_sweeper_task = asyncio.create_task(
+            _ip_intel_cache_sweeper(300), name='ip_intel_cache_sweeper'
+        )
+        logger.info('ip_intel cache sweeper started (300s expiry + LRU cap)')
+    except Exception as exc:
+        logger.warning(f'ip_intel cache sweeper failed to start: {exc}')
+
+    # Start scheduled scanner (full scan 2h, quick scan 30min, discovery 1h, uptime 5min)
+    scheduled_scanner.start()
+    logger.info('Scheduled scanner started')
+
+    # v1.6.3.12: prime PM2 jlist cache off the event loop so the first
+    # /monitored-apps request after restart doesn't eat the 1-5s cold penalty.
+    try:
+        from app.api.dashboard import warmup_pm2_cache, warmup_dashboard_cache
+        asyncio.create_task(warmup_pm2_cache(), name='pm2_cache_warmup')
+        # v1.6.3.12: also pre-warm DB pool + SQLAlchemy compile cache +
+        # /overview result cache so the first dashboard request after
+        # restart serves at ~150ms warm-cache latency instead of ~1.25s cold.
+        asyncio.create_task(warmup_dashboard_cache(), name='dashboard_cache_warmup')
+    except Exception as exc:
+        logger.warning(f'PM2 cache warmup task failed to launch: {exc}')
+
+    # v1.6.2: retention service — bounds incidents/attackers/honeypot table growth
+    # to AEGIS_RETENTION_DAYS rolling (default 90). Auto-closes stuck-investigating
+    # incidents whose source_ip is already in threat_intel. Honors
+    # AEGIS_RETENTION_DRY_RUN=1 for safe first-deploy preview.
+    try:
+        from app.services import retention as retention_service
+        await retention_service.start()
+    except Exception as exc:
+        logger.error(f"retention service failed to start: {exc}")
+
+    # Start host self-monitor (EDR telemetry via psutil — no external agent needed)
+    try:
+        await host_monitor.start()
+        logger.info('Host monitor started (EDR self-protection active)')
+    except Exception as e:
+        logger.error(f'Failed to start host monitor: {e}')
+
+    # Start the IOC connection monitor — OFF unless AEGIS_CONNECTION_MONITOR=1.
+    # It is the only path that can see an outbound C2 callback that writes no
+    # log line (an npm postinstall phoning home during a frontend build on this
+    # host, say). It publishes ONLY when the peer is a known indicator, so an
+    # enabled collector on a clean host emits nothing at all.
+    if settings.AEGIS_CONNECTION_MONITOR:
+        try:
+            from app.modules.network.connection_monitor import connection_monitor
+            connection_monitor.register_event_bus(event_bus)
+            await connection_monitor.start(
+                interval_seconds=settings.AEGIS_CONNECTION_MONITOR_INTERVAL
+            )
+        except Exception as e:
+            logger.error(f'Failed to start connection monitor: {e}')
+    else:
+        logger.info(
+            'IOC connection monitor disabled (set AEGIS_CONNECTION_MONITOR=1 '
+            'to enable outbound C2-callback detection)'
+        )
+
+    # Start auto-updater (background GitHub release checker)
+    try:
+        from app.services.auto_updater import auto_updater
+        await auto_updater.start()
+    except Exception as e:
+        logger.error(f'Failed to start auto-updater: {e}')
+
+    yield
+
+    # Shutdown
+    try:
+        from app.services.hub_sync_client import hub_sync_client as _hub_client
+        await _hub_client.stop()
+    except Exception:
+        pass
+    try:
+        from app.services.auto_updater import auto_updater
+        await auto_updater.stop()
+    except Exception:
+        pass
+    await host_monitor.stop()
+    if settings.AEGIS_CONNECTION_MONITOR:
+        try:
+            from app.modules.network.connection_monitor import connection_monitor
+            await connection_monitor.stop()
+        except Exception:
+            pass
+    try:
+        from app.services import retention as retention_service
+        await retention_service.stop()
+    except Exception:
+        pass
+    if settings.AEGIS_SWITCH_URL:
+        try:
+            from app.services.switch_monitor import switch_monitor as _switch_monitor
+            await _switch_monitor.stop()
+        except Exception:
+            pass
+    scheduled_scanner.stop()
+    await log_watcher.stop()
+    _als_task = getattr(app.state, 'attack_log_sweeper_task', None)
+    if _als_task is not None:
+        _als_task.cancel()
+        try:
+            await _als_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    _iics_task = getattr(app.state, 'ip_intel_sweeper_task', None)
+    if _iics_task is not None:
+        _iics_task.cancel()
+        try:
+            await _iics_task
+        except (asyncio.CancelledError, Exception):
+            pass
+    try:
+        if hasattr(correlation_engine, "stop"):
+            await correlation_engine.stop()
+    except Exception:
+        pass
+    await behavioral_engine.stop()
+    await threat_intel_hub.stop()
+    await close_mongo()
+    await intel_cloud.stop()
+    report_scheduler.stop()
+    await threat_feed_manager.stop()
+    try:
+        from app.services.dos_shield import dos_shield
+        if hasattr(dos_shield, "stop"):
+            await dos_shield.stop()
+    except Exception:
+        pass
+    await event_bus.stop()
+    # Drain fire-and-forget notify/hub-push tasks (bg_tasks.py) before the DB
+    # engine and HTTP clients they depend on are torn down below.
+    await drain_bg_tasks()
+    await event_stream.stop()
+    await openrouter_client.close()
+    await interaction_processor.stop()
+    await ssh_honeypot.stop()
+    await http_honeypot.stop()
+    try:
+        from app.modules.phantom.tls_honeypot import stop_tls_honeypot
+        await stop_tls_honeypot()
+    except Exception:
+        pass
+    await engine.dispose()
+    logger.info("Cayde-6 shut down")
+
+
+# --- App ---
+
+# --- Rate limiter (shared instance used by route decorators) ---
+limiter = Limiter(key_func=rate_limit_key)
+
+app = FastAPI(
+    title="SentinelSOC Defense Platform",
+    description="Autonomous cybersecurity defense, EDR, and ransomware recovery platform",
+    version=__version__,
+    lifespan=lifespan,
+)
+
+# Attach limiter to app state so route files can import it
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Attack detection middleware (runs before every request)
+from app.core.attack_detector import AttackDetectorMiddleware
+app.add_middleware(AttackDetectorMiddleware)
+
+# DoS Shield (v1.6.4.1). Starlette wraps middleware in REVERSE registration
+# order (last added = outermost = runs first). By adding BodySizeLimitMiddleware
+# then DoSShieldMiddleware AFTER AttackDetectorMiddleware, the runtime order
+# becomes: CORS -> DoSShieldMiddleware -> BodySizeLimitMiddleware -> AttackDetector ->
+# routes. Floods are shed BEFORE the heavy mega-regex attack detection
+# and body reads. Monitor-mode by default (AEGIS_DOS_MODE=monitor): detect only,
+# no 429/block.
+from app.core.dos_middleware import DoSShieldMiddleware, BodySizeLimitMiddleware
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(DoSShieldMiddleware)
+
+# CORS is registered LAST so it is the OUTERMOST middleware: every response
+# generated by the layers above (the 403 "blocked" from AttackDetector, 413/429
+# from the DoS shield) gets CORS headers for allowed origins. Registered first
+# it sat innermost and those rejections reached the browser without
+# Access-Control-Allow-Origin, masking the real cause as a CORS error.
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.AEGIS_CORS_ORIGINS.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register API routes
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(surface.router, prefix="/api/v1")
+app.include_router(response.router, prefix="/api/v1")
+app.include_router(phantom.router, prefix="/api/v1")
+# Honeypot canary (defensive JS leak capture). POST is open-auth (the
+# attacker's browser is the caller); GET endpoints inside require API key.
+from app.modules.phantom.canary import router as phantom_canary_router  # noqa: E402
+app.include_router(phantom_canary_router, prefix="/api/v1/phantom")
+app.include_router(threats.router, prefix="/api/v1")
+app.include_router(settings_router.router, prefix="/api/v1")
+app.include_router(correlation.router, prefix="/api/v1")
+app.include_router(feeds.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
+app.include_router(ai_providers_router.router, prefix="/api/v1")
+app.include_router(ask_ai_router.router, prefix="/api/v1")
+app.include_router(agents_router.router, prefix="/api/v1")
+app.include_router(intel_cloud_router.router, prefix="/api/v1")
+app.include_router(behavioral_router.router, prefix="/api/v1")
+app.include_router(network_router.router, prefix="/api/v1")
+app.include_router(setup_router.router, prefix="/api/v1")
+app.include_router(infra_router.router, prefix="/api/v1")
+app.include_router(nodes_router.router, prefix="/api/v1")
+app.include_router(sbom_router.router, prefix="/api/v1")
+app.include_router(quantum_router.router, prefix="/api/v1")
+app.include_router(onboarding_router.router, prefix="/api/v1")
+app.include_router(payments_router.router, prefix="/api/v1")
+app.include_router(compliance_router.router, prefix="/api/v1")
+app.include_router(updates_router.router, prefix="/api/v1")
+app.include_router(firewall_router.router, prefix="/api/v1")
+app.include_router(switch_router.router, prefix="/api/v1")
+app.include_router(rules_router.router, prefix="/api/v1")
+app.include_router(ransomware_router.router, prefix="/api/v1")
+app.include_router(deception_router.router, prefix="/api/v1")
+app.include_router(edr_router.router, prefix="/api/v1")
+app.include_router(antivirus_router.router, prefix="/api/v1")
+app.include_router(dos_router.router, prefix="/api/v1")
+app.include_router(threat_intel_hub_router.router, prefix="/api/v1")
+app.include_router(intel_router.router, prefix="/api/v1/intel", tags=["ip-intel"])
+app.include_router(admin.router, prefix="/api/v1")
+
+
+# --- WebSocket endpoint (enhanced with WSPushManager) ---
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    # HTTP middleware never sees this scope: enforce blocklist and auth here.
+    from app.core import ws_auth
+    if ws_auth.websocket_ip_is_blocked(websocket):
+        await websocket.close(code=ws_auth.CLOSE_FORBIDDEN)
+        return
+    await websocket.accept()
+    identity = await ws_auth.authenticate_websocket(websocket, async_session)
+    if identity is None:
+        return
+    # The query param is only a display label; identity comes from the credential.
+    label = websocket.query_params.get("client_id") or identity.label
+    ws_client = await ws_push_manager.register(websocket, label[:64], identity.tenant_id)
+    await websocket.send_json({"type": "auth_ok"})
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                elif msg.get("type") == "set_filters":
+                    ws_push_manager.set_filters(ws_client, msg.get("filters", {}))
+                    await websocket.send_json({"type": "filters_updated", "filters": msg.get("filters", {})})
+                elif msg.get("type") == "subscribe":
+                    # Topic subscription — supports "topics" (preferred) or "event_types" (legacy)
+                    new_topics = msg.get("topics") or msg.get("event_types") or []
+                    ws_push_manager.subscribe_topics(ws_client, new_topics)
+                    await websocket.send_json({
+                        "type": "subscribed",
+                        "topics": sorted(ws_client.topics),
+                    })
+                elif msg.get("type") == "unsubscribe":
+                    rm_topics = msg.get("topics") or msg.get("event_types") or []
+                    ws_push_manager.unsubscribe_topics(ws_client, rm_topics)
+                    await websocket.send_json({
+                        "type": "unsubscribed",
+                        "topics": sorted(ws_client.topics),
+                    })
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        ws_push_manager.disconnect(ws_client)
+
+
+# --- Health endpoint ---
+
+@app.get("/health")
+async def health():
+    from app.core.ai_mode import MODE as _ai_mode
+    return {
+        "status": "healthy",
+        "service": "cayde-6",
+        "version": __version__,
+        "environment": settings.AEGIS_ENV,
+        "ai_mode": _ai_mode.value,
+        "detection": {
+            **log_watcher.liveness(),
+            "rules_triggered": correlation_engine.stats().get("rules_triggered"),
+            "last_rule_fired_at": correlation_engine.stats().get("last_rule_fired_at"),
+        },
+    }
+
+
+@app.get("/health/detection")
+async def health_detection():
+    """Detection-pipeline liveness: tail -> events -> rules, with last-activity times."""
+    lw = log_watcher.liveness()
+    ce = correlation_engine.stats()
+    return {
+        "status": "degraded" if (lw["stalled"] or not lw["tail_task_alive"]) else "healthy",
+        "log_watcher": lw,
+        "correlation": {
+            k: ce.get(k)
+            for k in ("events_processed", "rules_triggered", "chains_triggered",
+                      "last_event_at", "last_rule_fired_at", "rules_enabled")
+        },
+    }
+
+
+@app.get("/api/v1/health")
+async def api_health():
+    from app.core.ai_mode import MODE as _ai_mode
+    return {
+        "status": "healthy",
+        "service": "cayde-6",
+        "version": __version__,
+        "ai_mode": _ai_mode.value,
+    }
+
+
+# --- Pipeline stats endpoint ---
+
+@app.get("/api/v1/pipeline/stats")
+async def pipeline_stats(_auth=Depends(_require_viewer)):
+    from app.services.ai_engine import ai_engine
+    return {
+        "event_bus": event_bus.stats(),
+        "event_stream": event_stream.stats(),
+        "ws_push": ws_push_manager.stats(),
+        "correlation": correlation_engine.stats(),
+        "playbook": playbook_engine.stats(),
+        "fast_triage": ai_engine.fast_triage_stats(),
+    }
