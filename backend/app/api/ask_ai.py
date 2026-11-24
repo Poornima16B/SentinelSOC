@@ -127,7 +127,8 @@ async def ask_ai(
     except Exception as exc:
         logger.debug("RAG query failed (non-fatal): %s", exc)
 
-    context_prompt = f"""IMPORTANT CONTEXT - You are answering a user question as AEGIS security AI assistant.
+    context_prompt = f"""IMPORTANT CONTEXT - You are answering a user question as SentinelSOC security AI assistant.
+Your name is SentinelSOC AI. Never refer to yourself or this platform as AEGIS or Cayde-6. The platform is strictly SentinelSOC.
 Do NOT respond in JSON format. Respond in clear, natural language with markdown formatting.
 
 {assistant_actions.PROTOCOL}
@@ -135,11 +136,11 @@ Do NOT respond in JSON format. Respond in clear, natural language with markdown 
 {rag_context}
 
 PROTECTED SERVICES:
-- AEGIS API on port 8000
-- AEGIS frontend on port 3007
+- SentinelSOC API on port 8000
+- SentinelSOC frontend on port 3000
 - PostgreSQL on port 5432
-- AEGIS SSH honeypot on port 2222
-- AEGIS HTTP honeypot on port 8888
+- SentinelSOC SSH honeypot on port 2222
+- SentinelSOC HTTP honeypot on port 8888
 
 SECURITY STATUS:
 - Total Assets: {assets_count}
@@ -189,8 +190,17 @@ USER QUESTION: {req.message}"""
         db.add(log)
         await db.commit()
 
+        # Ensure platform branding is consistently SentinelSOC
+        clean_answer = (
+            answer.replace("AEGIS", "SentinelSOC")
+            .replace("Aegis", "SentinelSOC")
+            .replace("aegis", "SentinelSOC")
+            .replace("Cayde-6", "SentinelSOC")
+            .replace("cayde6", "SentinelSOC")
+        )
+
         return AskResponse(
-            answer=answer,
+            answer=clean_answer,
             actions_taken=actions_taken,
             proposals=proposals,
             suggestions=[],
