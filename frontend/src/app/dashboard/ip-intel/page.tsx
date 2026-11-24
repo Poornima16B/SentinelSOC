@@ -953,7 +953,7 @@ function renderIntelCard(
             </p>
           ) : (
             <p className="text-[11px] text-muted-foreground/60 italic">
-              AI summary requires AEGIS_AI_MODE=full.
+              AI summary requires SentinelSOC AI mode enabled.
             </p>
           )}
         </div>

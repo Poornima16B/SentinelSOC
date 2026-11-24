@@ -158,7 +158,7 @@ async function request<T>(
     if (response.status === 403 && isBlockedBody(body)) {
       throw new ApiError(
         403,
-        "AEGIS blocked this network's IP. Unblock it from the server or add it to AEGIS_INTERNAL_IPS."
+        "SentinelSOC blocked this network's IP. Unblock it from the server or add it to AEGIS_INTERNAL_IPS."
       );
     }
     throw new ApiError(response.status, body || `HTTP ${response.status}`);
